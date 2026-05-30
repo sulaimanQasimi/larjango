@@ -184,4 +184,3 @@ def _route_view(route: Route, router: Router):
 
 
 router = Router()
-Route = router
