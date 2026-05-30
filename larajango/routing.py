@@ -20,7 +20,7 @@ class Route:
     uri: str
     action: Callable | str
     name: str | None = None
-    middleware: tuple[str | Callable, ...] = ()
+    middleware_stack: tuple[str | Callable, ...] = ()
     constraints: dict[str, str] = field(default_factory=dict)
     domain: str | None = None
     controller: type | None = None
@@ -28,6 +28,7 @@ class Route:
     scoped_bindings: bool | None = None
     bindings: dict[str, tuple[type, str]] = field(default_factory=dict)
     binders: dict[str, Callable] = field(default_factory=dict)
+    excluded_middleware: tuple[str | Callable, ...] = ()
 
     def named(self, name: str):
         self.name = name
@@ -35,8 +36,19 @@ class Route:
 
     def with_middleware(self, middleware: str | Callable | Iterable[str | Callable]):
         items = (middleware,) if isinstance(middleware, (str,)) or callable(middleware) else tuple(middleware)
-        self.middleware = (*self.middleware, *items)
+        self.middleware_stack = (*self.middleware_stack, *items)
         return self
+
+    def middleware(self, middleware: str | Callable | Iterable[str | Callable]):
+        return self.with_middleware(middleware)
+
+    def without_middleware(self, middleware: str | Callable | Iterable[str | Callable]):
+        items = (middleware,) if isinstance(middleware, str) or callable(middleware) else tuple(middleware)
+        self.excluded_middleware = (*self.excluded_middleware, *items)
+        return self
+
+    def withoutMiddleware(self, middleware: str | Callable | Iterable[str | Callable]):
+        return self.without_middleware(middleware)
 
     def where(self, parameter: str | dict[str, str], expression: str | None = None):
         if isinstance(parameter, dict):
@@ -106,6 +118,7 @@ class RouteGroup:
             "prefix": prefix,
             "name": name,
             "middleware": tuple(middleware),
+            "without_middleware": (),
             "domain": domain,
             "controller": controller,
             "constraints": constraints or {},
@@ -115,6 +128,14 @@ class RouteGroup:
     def prefix(self, prefix: str):
         self.options["prefix"] = prefix
         return self
+
+    def without_middleware(self, middleware: str | Callable | Iterable[str | Callable]):
+        items = (middleware,) if isinstance(middleware, str) or callable(middleware) else tuple(middleware)
+        self.options["without_middleware"] = (*self.options["without_middleware"], *items)
+        return self
+
+    def withoutMiddleware(self, middleware: str | Callable | Iterable[str | Callable]):
+        return self.without_middleware(middleware)
 
     def name(self, name: str):
         self.options["name"] = name
@@ -169,6 +190,7 @@ class Router:
             "web": (),
             "api": (),
         }
+        self.middleware_priority: tuple[str | Callable, ...] = ()
         self.patterns: dict[str, str] = {}
         self.model_bindings: dict[str, tuple[type, str]] = {}
         self.explicit_binders: dict[str, Callable] = {}
@@ -196,6 +218,7 @@ class Router:
             scoped_bindings=self._current_scoped_bindings(),
             bindings=dict(self.model_bindings),
             binders=dict(self.explicit_binders),
+            excluded_middleware=self._merge_without_middleware(),
         )
         self.routes.append(route)
         return route
@@ -272,6 +295,21 @@ class Router:
     def middleware_group(self, name: str, middleware: Iterable[str | Callable]):
         self.middleware_groups[name] = tuple(middleware)
 
+    def append_to_group(self, name: str, middleware: str | Callable | Iterable[str | Callable]):
+        self.middleware_groups[name] = (*self.middleware_groups.get(name, ()), *_middleware_tuple(middleware))
+
+    def prepend_to_group(self, name: str, middleware: str | Callable | Iterable[str | Callable]):
+        self.middleware_groups[name] = (*_middleware_tuple(middleware), *self.middleware_groups.get(name, ()))
+
+    def remove_from_group(self, name: str, middleware: str | Callable | Iterable[str | Callable]):
+        removed = set(_middleware_tuple(middleware))
+        self.middleware_groups[name] = tuple(item for item in self.middleware_groups.get(name, ()) if item not in removed)
+
+    def replace_in_group(self, name: str, replacements: dict[str | Callable, str | Callable]):
+        self.middleware_groups[name] = tuple(
+            replacements.get(item, item) for item in self.middleware_groups.get(name, ())
+        )
+
     def pattern(self, parameter: str, expression: str):
         self.patterns[parameter] = expression
 
@@ -286,6 +324,12 @@ class Router:
 
     def middleware(self, middleware: str | Callable | Iterable[str | Callable]):
         return RouteGroup(self).middleware(middleware)
+
+    def without_middleware(self, middleware: str | Callable | Iterable[str | Callable]):
+        return RouteGroup(self).without_middleware(middleware)
+
+    def withoutMiddleware(self, middleware: str | Callable | Iterable[str | Callable]):
+        return self.without_middleware(middleware)
 
     def prefix(self, prefix: str):
         return RouteGroup(self).prefix(prefix)
@@ -344,6 +388,12 @@ class Router:
         merged.extend(middleware)
         return tuple(merged)
 
+    def _merge_without_middleware(self) -> tuple[str | Callable, ...]:
+        merged: list[str | Callable] = []
+        for group in self._groups:
+            merged.extend(group["without_middleware"])
+        return tuple(merged)
+
     def _merge_constraints(self):
         constraints = dict(self.patterns)
         for group in self._groups:
@@ -375,11 +425,12 @@ class Router:
         return action
 
     def _resolve_middleware(self, middleware: str | Callable):
-        item = self.middleware_aliases.get(middleware, middleware) if isinstance(middleware, str) else middleware
-        if isinstance(item, str) and item.startswith("throttle:"):
+        name, parameters = _parse_middleware(middleware)
+        if name == "throttle":
             from larajango.rate_limiting import ThrottleRequests
 
-            return ThrottleRequests(item.split(":", 1)[1])
+            return ThrottleRequests(parameters[0] if parameters else "api"), ()
+        item = self.middleware_aliases.get(name, name) if isinstance(name, str) else name
         if isinstance(item, str) and item in self.middleware_groups:
             return [self._resolve_middleware(entry) for entry in self.middleware_groups[item]]
         if isinstance(item, str):
@@ -387,7 +438,7 @@ class Router:
             if not module_name:
                 raise LookupError(f"Middleware alias '{item}' is not registered.")
             item = getattr(import_module(module_name), attr)
-        return item
+        return item, parameters
 
 
 def _route_regex(route: Route):
@@ -421,13 +472,18 @@ def _domain_regex(domain: str):
 
 def _route_view(route: Route, router: Router):
     action = route.action
-    for middleware in reversed(route.middleware):
+    middleware_stack = _sort_middleware(
+        tuple(item for item in route.middleware_stack if not _middleware_excluded(item, route.excluded_middleware)),
+        router.middleware_priority,
+    )
+    terminable = []
+    for middleware in reversed(middleware_stack):
         resolved = router._resolve_middleware(middleware)
         if isinstance(resolved, list):
             for item in reversed(list(_flatten_middleware(resolved))):
-                action = item(action)
+                action = _wrap_middleware(item, action, terminable)
         else:
-            action = resolved(action)
+            action = _wrap_middleware(resolved, action, terminable)
 
     @wraps(route.action if callable(route.action) else _route_view)
     def view(request, *args, **kwargs):
@@ -445,7 +501,10 @@ def _route_view(route: Route, router: Router):
             if route.missing_handler:
                 return route.missing_handler(request)
             raise
-        return action(request, *args, **bound_kwargs)
+        response = action(request, *args, **bound_kwargs)
+        for middleware in reversed(terminable):
+            middleware.terminate(request, response)
+        return response
 
     return view
 
@@ -489,3 +548,53 @@ def _flatten_middleware(middleware):
             yield from _flatten_middleware(item)
         else:
             yield item
+
+
+def _middleware_tuple(value):
+    if value is None:
+        return ()
+    if isinstance(value, str) or callable(value):
+        return (value,)
+    return tuple(value)
+
+
+def _parse_middleware(middleware):
+    if not isinstance(middleware, str):
+        return middleware, ()
+    name, separator, raw_parameters = middleware.partition(":")
+    parameters = tuple(part for part in raw_parameters.split(",") if part) if separator else ()
+    return name, parameters
+
+
+def _middleware_name(middleware):
+    name, _ = _parse_middleware(middleware)
+    return name
+
+
+def _middleware_excluded(middleware, excluded):
+    middleware_name = _middleware_name(middleware)
+    return any(middleware == item or middleware_name == _middleware_name(item) for item in excluded)
+
+
+def _sort_middleware(middleware, priority):
+    order = {_middleware_name(item): index for index, item in enumerate(priority)}
+    return tuple(sorted(middleware, key=lambda item: order.get(_middleware_name(item), len(order))))
+
+
+def _wrap_middleware(resolved, action, terminable):
+    middleware, parameters = resolved
+    if inspect.isclass(middleware):
+        instance = middleware(action, *parameters)
+        if hasattr(instance, "terminate"):
+            terminable.append(instance)
+        return instance
+    try:
+        instance = middleware(action, *parameters)
+    except TypeError:
+        def wrapper(request, *args, **kwargs):
+            return middleware(request, action, *parameters, *args, **kwargs)
+
+        return wrapper
+    if hasattr(instance, "terminate"):
+        terminable.append(instance)
+    return instance

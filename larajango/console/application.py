@@ -111,6 +111,8 @@ Usage:
   ./artisan make:controller NameController
   ./artisan make:model Name
   ./artisan make:middleware EnsureUserIsAdmin
+  ./artisan make:middleware EnsureUserHasRole --parameters role
+  ./artisan make:middleware LogAfterResponse --terminable
   ./artisan make:request StorePostRequest
   ./artisan make:seeder UserSeeder
   ./artisan make:policy PostPolicy
@@ -163,7 +165,7 @@ def route_list(args: list[str]):
             continue
         action = f"{route.action.__module__}.{route.action.__qualname__}" if callable(route.action) else str(route.action)
         methods = "|".join(route.methods)
-        middleware = ", ".join(str(item) for item in route.middleware)
+        middleware = ", ".join(str(item) for item in route.middleware_stack)
         suffix = f" {middleware}" if show_middleware else ""
         suffix += f" {route.domain or ''}" if parsed.very_verbose else ""
         print(f"{methods:<18} {route.uri:<30} {(route.name or ''):<24} {action}{suffix}")
@@ -184,7 +186,7 @@ def route_cache():
             "methods": route.methods,
             "uri": route.uri,
             "name": route.name,
-            "middleware": [str(item) for item in route.middleware],
+            "middleware": [str(item) for item in route.middleware_stack],
             "domain": route.domain,
             "constraints": route.constraints,
             "action": f"{route.action.__module__}.{route.action.__qualname__}" if callable(route.action) else str(route.action),
@@ -336,16 +338,34 @@ class {name}(models.Model):
 
 
 def make_middleware(args: list[str]):
-    name = require_name(args, "middleware name")
+    parser = argparse.ArgumentParser(prog="./artisan make:middleware")
+    parser.add_argument("name")
+    parser.add_argument("--parameters", default="")
+    parser.add_argument("--terminable", action="store_true")
+    parsed = parser.parse_args(args)
+    name = parsed.name
     path = ROOT / "app" / "Http" / "Middleware" / f"{name}.py"
+    parameters = [item.strip() for item in parsed.parameters.split(",") if item.strip()]
+    signature = ", " + ", ".join(parameters) if parameters else ""
+    assignments = "".join(f"        self.{parameter} = {parameter}\n" for parameter in parameters)
+    terminate = (
+        '''
+    def terminate(self, request, response):
+        pass
+'''
+        if parsed.terminable
+        else ""
+    )
     create_file(
         path,
         f'''class {name}:
-    def __init__(self, next_handler):
+    def __init__(self, next_handler{signature}):
         self.next_handler = next_handler
+{assignments.rstrip()}
 
     def __call__(self, request, *args, **kwargs):
         return self.next_handler(request, *args, **kwargs)
+{terminate}
 ''',
     )
 

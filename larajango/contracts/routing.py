@@ -8,7 +8,7 @@ class RouteContract(Protocol):
     uri: str
     action: Callable
     name: str | None
-    middleware: tuple[str | Callable, ...]
+    middleware_stack: tuple[str | Callable, ...]
     constraints: dict[str, str]
     domain: str | None
 

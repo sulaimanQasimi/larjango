@@ -43,6 +43,8 @@ Open `http://127.0.0.1:8000`.
 ./artisan make:controller PostController --resource
 ./artisan make:model Post -m
 ./artisan make:middleware EnsureUserIsAdmin
+./artisan make:middleware EnsureUserHasRole --parameters role
+./artisan make:middleware LogAfterResponse --terminable
 ./artisan make:request StorePostRequest
 ./artisan make:seeder UserSeeder
 ./artisan make:policy PostPolicy
@@ -197,10 +199,17 @@ action = router.current_route_action(request)
 Register middleware aliases and groups in `bootstrap/app.py`:
 
 ```python
+from larajango.foundation import Middleware
 from larajango.routing import router
 
-router.alias_middleware("auth", "app.Http.Middleware.Authenticate.Authenticate")
-router.middleware_group("api", ("throttle:api",))
+middleware = Middleware(router)
+
+middleware.alias({
+    "auth": "app.Http.Middleware.Authenticate.Authenticate",
+    "role": "app.Http.Middleware.EnsureUserHasRole.EnsureUserHasRole",
+})
+
+middleware.group("api", ("throttle:api",))
 ```
 
 Then attach them to route groups:
@@ -208,6 +217,55 @@ Then attach them to route groups:
 ```python
 with router.group(prefix="account", middleware=["auth"]):
     router.get("/", AccountController.index, name="account")
+```
+
+Middleware may be attached to individual routes, excluded from routes, or chained through route groups:
+
+```python
+router.get("/profile", ProfileController.show).middleware("auth")
+router.get("/public", PublicController.index).without_middleware("auth")
+
+router.middleware(["auth", "role:admin"]).prefix("admin").group(
+    lambda: router.get("/", AdminController.index, name="admin")
+)
+```
+
+Middleware parameters are passed after the middleware name:
+
+```python
+class EnsureUserHasRole:
+    def __init__(self, next_handler, role):
+        self.next_handler = next_handler
+        self.role = role
+
+    def __call__(self, request, *args, **kwargs):
+        if not request.user.groups.filter(name=self.role).exists():
+            return response("Forbidden", status=403)
+        return self.next_handler(request, *args, **kwargs)
+```
+
+Middleware groups can be modified Laravel-style:
+
+```python
+middleware.api(append=["throttle:api"])
+middleware.web(prepend=["app.Http.Middleware.BeforeRequest.BeforeRequest"])
+middleware.web(replace={"old": "new"})
+middleware.web(remove=["auth"])
+middleware.priority(["auth", "throttle:api"])
+```
+
+Terminable middleware can define `terminate(request, response)`:
+
+```python
+class LogAfterResponse:
+    def __init__(self, next_handler):
+        self.next_handler = next_handler
+
+    def __call__(self, request, *args, **kwargs):
+        return self.next_handler(request, *args, **kwargs)
+
+    def terminate(self, request, response):
+        pass
 ```
 
 Rate limiters follow Laravel's `Limit` builder style:
