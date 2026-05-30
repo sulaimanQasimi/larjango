@@ -1,0 +1,13 @@
+from __future__ import annotations
+
+from typing import Protocol
+
+
+class CacheRepositoryContract(Protocol):
+    def get(self, key: str, default=None): ...
+
+    def set(self, key: str, value, seconds: int | None = None): ...
+
+    def remember(self, key: str, seconds: int, callback): ...
+
+    def clear(self): ...

@@ -1,0 +1,21 @@
+from __future__ import annotations
+
+from typing import Protocol
+
+
+class FormRequestContract(Protocol):
+    rules: dict[str, list[str] | str]
+    errors: dict[str, list[str]]
+    cleaned_data: dict[str, str]
+
+    def validate(self) -> bool: ...
+
+    def response(self): ...
+
+
+class ResponseFactoryContract(Protocol):
+    def response(self, content="", status: int = 200, headers: dict | None = None): ...
+
+    def json(self, data, status: int = 200, headers: dict | None = None): ...
+
+    def view(self, request, template: str, data: dict | None = None, status: int = 200): ...
