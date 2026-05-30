@@ -1,13 +1,17 @@
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+from larajango.config import env, load_env
 
-SECRET_KEY = "larajango-dev-secret-key"
-DEBUG = True
-ALLOWED_HOSTS = []
+BASE_DIR = Path(__file__).resolve().parent.parent
+load_env(BASE_DIR / ".env")
+
+SECRET_KEY = env("APP_KEY", "larajango-dev-secret-key")
+DEBUG = env("APP_DEBUG", True)
+ALLOWED_HOSTS = [host for host in str(env("APP_HOSTS", "")).split(",") if host]
 
 INSTALLED_APPS = [
     "app.apps.Application",
+    "larajango.apps.LarajangoConfig",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -48,12 +52,12 @@ WSGI_APPLICATION = "bootstrap.wsgi.application"
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "database" / "database.sqlite3",
+        "NAME": BASE_DIR / str(env("DB_DATABASE", "database/database.sqlite3")),
     }
 }
 
-LANGUAGE_CODE = "en-us"
-TIME_ZONE = "UTC"
+LANGUAGE_CODE = env("APP_LOCALE", "en-us")
+TIME_ZONE = env("APP_TIMEZONE", "UTC")
 USE_I18N = True
 USE_TZ = True
 

@@ -1,26 +1,51 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable
+from functools import wraps
+from importlib import import_module
+from typing import Callable, Iterable
 
-from django.http import HttpResponseNotAllowed
+from django.http import HttpResponseNotAllowed, HttpResponseRedirect
+from django.shortcuts import render
 from django.urls import path
 
 
 @dataclass(frozen=True)
 class Route:
-    method: str
+    methods: tuple[str, ...]
     uri: str
     action: Callable
     name: str | None = None
+    middleware: tuple[str | Callable, ...] = ()
 
 
 class Router:
     def __init__(self):
         self.routes: list[Route] = []
+        self.middleware_aliases: dict[str, str | Callable] = {}
+        self.middleware_groups: dict[str, tuple[str | Callable, ...]] = {
+            "web": (),
+            "api": (),
+        }
+        self._groups: list[dict] = []
+        self._fallback: Route | None = None
 
-    def add(self, method: str, uri: str, action: Callable, name: str | None = None):
-        route = Route(method.upper(), uri, action, name)
+    def add(
+        self,
+        methods: str | Iterable[str],
+        uri: str,
+        action: Callable,
+        name: str | None = None,
+        middleware: Iterable[str | Callable] | None = None,
+    ):
+        verbs = (methods,) if isinstance(methods, str) else tuple(methods)
+        route = Route(
+            tuple(verb.upper() for verb in verbs),
+            self._prefix_uri(uri),
+            action,
+            self._prefix_name(name),
+            self._merge_middleware(middleware or ()),
+        )
         self.routes.append(route)
         return route
 
@@ -39,24 +64,124 @@ class Router:
     def delete(self, uri: str, action: Callable, name: str | None = None):
         return self.add("DELETE", uri, action, name)
 
+    def options(self, uri: str, action: Callable, name: str | None = None):
+        return self.add("OPTIONS", uri, action, name)
+
+    def match(self, methods: Iterable[str], uri: str, action: Callable, name: str | None = None):
+        return self.add(methods, uri, action, name)
+
+    def any(self, uri: str, action: Callable, name: str | None = None):
+        return self.add(("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"), uri, action, name)
+
+    def redirect(self, uri: str, destination: str, status: int = 302, name: str | None = None):
+        def action(request, *args, **kwargs):
+            return HttpResponseRedirect(destination.format(**kwargs), status=status)
+
+        return self.get(uri, action, name)
+
+    def permanent_redirect(self, uri: str, destination: str, name: str | None = None):
+        return self.redirect(uri, destination, 301, name)
+
+    def view(self, uri: str, template: str, data: dict | None = None, name: str | None = None):
+        def action(request, *args, **kwargs):
+            return render(request, template, data or {})
+
+        return self.get(uri, action, name)
+
+    def fallback(self, action: Callable):
+        self._fallback = Route(("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"), "<path:path>", action)
+        return self._fallback
+
+    def resource(self, name: str, controller: type, names: str | None = None):
+        base = "/" + name.strip("/")
+        route_name = names or name.strip("/").replace("/", ".")
+        self.get(base, controller.index, name=f"{route_name}.index")
+        self.get(f"{base}/create", controller.create, name=f"{route_name}.create")
+        self.post(base, controller.store, name=f"{route_name}.store")
+        self.get(f"{base}/{{id}}", controller.show, name=f"{route_name}.show")
+        self.get(f"{base}/{{id}}/edit", controller.edit, name=f"{route_name}.edit")
+        self.put(f"{base}/{{id}}", controller.update, name=f"{route_name}.update")
+        self.patch(f"{base}/{{id}}", controller.update, name=f"{route_name}.update")
+        self.delete(f"{base}/{{id}}", controller.destroy, name=f"{route_name}.destroy")
+
+    def alias_middleware(self, name: str, middleware: str | Callable):
+        self.middleware_aliases[name] = middleware
+
+    def middleware_group(self, name: str, middleware: Iterable[str | Callable]):
+        self.middleware_groups[name] = tuple(middleware)
+
+    def group(self, prefix: str = "", name: str = "", middleware: Iterable[str | Callable] = ()):
+        router = self
+
+        class RouteGroup:
+            def __enter__(self):
+                router._groups.append({"prefix": prefix, "name": name, "middleware": tuple(middleware)})
+                return router
+
+            def __exit__(self, exc_type, exc, traceback):
+                router._groups.pop()
+
+        return RouteGroup()
+
     def urlpatterns(self):
-        return [path(_django_path(route.uri), _method_view(route), name=route.name) for route in self.routes]
+        routes = list(self.routes)
+        if self._fallback:
+            routes.append(self._fallback)
+        return [path(_django_path(route.uri), _route_view(route, self), name=route.name) for route in routes]
+
+    def _prefix_uri(self, uri: str) -> str:
+        pieces = [group["prefix"].strip("/") for group in self._groups if group["prefix"]]
+        pieces.append(uri.strip("/"))
+        joined = "/".join(part for part in pieces if part)
+        return f"/{joined}" if joined else "/"
+
+    def _prefix_name(self, name: str | None) -> str | None:
+        if name is None:
+            return None
+        prefix = "".join(group["name"] for group in self._groups)
+        return f"{prefix}{name}"
+
+    def _merge_middleware(self, middleware: Iterable[str | Callable]) -> tuple[str | Callable, ...]:
+        merged: list[str | Callable] = []
+        for group in self._groups:
+            merged.extend(group["middleware"])
+        merged.extend(middleware)
+        return tuple(merged)
+
+    def _resolve_middleware(self, middleware: str | Callable):
+        item = self.middleware_aliases.get(middleware, middleware) if isinstance(middleware, str) else middleware
+        if isinstance(item, str) and item in self.middleware_groups:
+            return [self._resolve_middleware(entry) for entry in self.middleware_groups[item]]
+        if isinstance(item, str):
+            module_name, _, attr = item.rpartition(".")
+            if not module_name:
+                raise LookupError(f"Middleware alias '{item}' is not registered.")
+            item = getattr(import_module(module_name), attr)
+        return item
 
 
 def _django_path(uri: str) -> str:
     return uri.strip("/").replace("{", "<").replace("}", ">")
 
 
-def _method_view(route: Route):
-    def view(request, *args, **kwargs):
-        if request.method.upper() != route.method:
-            return HttpResponseNotAllowed([route.method])
-        return route.action(request, *args, **kwargs)
+def _route_view(route: Route, router: Router):
+    action = route.action
+    for middleware in reversed(route.middleware):
+        resolved = router._resolve_middleware(middleware)
+        if isinstance(resolved, list):
+            for item in reversed(resolved):
+                action = item(action)
+        else:
+            action = resolved(action)
 
-    view.__name__ = route.action.__name__
-    view.__qualname__ = route.action.__qualname__
-    view.__module__ = route.action.__module__
+    @wraps(route.action)
+    def view(request, *args, **kwargs):
+        if request.method.upper() not in route.methods:
+            return HttpResponseNotAllowed(route.methods)
+        return action(request, *args, **kwargs)
+
     return view
 
 
 router = Router()
+Route = router
