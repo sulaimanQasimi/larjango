@@ -22,7 +22,9 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "larajango.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
+    "larajango.middleware.MethodOverrideMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
@@ -64,6 +66,12 @@ USE_TZ = True
 STATIC_URL = "static/"
 STATICFILES_DIRS = [BASE_DIR / "public"]
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+CORS = {
+    "ALLOW_ORIGIN": env("CORS_ALLOW_ORIGIN", "*"),
+    "ALLOW_METHODS": env("CORS_ALLOW_METHODS", "GET, POST, PUT, PATCH, DELETE, OPTIONS"),
+    "ALLOW_HEADERS": env("CORS_ALLOW_HEADERS", "Content-Type, Authorization, X-Requested-With, X-Inertia"),
+}
 
 CACHES = {
     "default": {
