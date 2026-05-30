@@ -42,3 +42,7 @@ class Gate(Facade):
 
 class Queue(Facade):
     accessor = "queue"
+
+
+class RateLimiter(Facade):
+    accessor = "rate_limiter"

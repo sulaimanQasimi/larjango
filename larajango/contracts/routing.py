@@ -9,6 +9,8 @@ class RouteContract(Protocol):
     action: Callable
     name: str | None
     middleware: tuple[str | Callable, ...]
+    constraints: dict[str, str]
+    domain: str | None
 
 
 class RouterContract(Protocol):
@@ -29,6 +31,14 @@ class RouterContract(Protocol):
 
     def resource(self, name: str, controller: type, names: str | None = None): ...
 
+    def api_resource(self, name: str, controller: type, names: str | None = None): ...
+
     def group(self, prefix: str = "", name: str = "", middleware: Iterable[str | Callable] = ()): ...
+
+    def pattern(self, parameter: str, expression: str): ...
+
+    def model(self, parameter: str, model: type, field: str = "pk"): ...
+
+    def bind(self, parameter: str, resolver: Callable): ...
 
     def urlpatterns(self): ...

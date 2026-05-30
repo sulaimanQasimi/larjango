@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 node_modules/
 public/build/
+bootstrap/cache/*.json
 database/*.sqlite3
 storage/logs/*.log
 .env

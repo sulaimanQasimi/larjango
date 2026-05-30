@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from datetime import datetime
 from importlib import import_module
+import json
 import os
 import secrets
 import shutil
@@ -42,6 +43,10 @@ def main(argv: list[str] | None = None):
         return dev(args)
     if command == "route:list":
         return route_list(args)
+    if command == "route:cache":
+        return route_cache()
+    if command == "route:clear":
+        return route_clear()
     if command == "config:show":
         return config_show(args)
     if command == "config:clear":
@@ -95,6 +100,8 @@ Usage:
   ./artisan migrate
   ./artisan dev
   ./artisan route:list
+  ./artisan route:cache
+  ./artisan route:clear
   ./artisan config:show app
   ./artisan config:clear
   ./artisan cache:clear
@@ -129,6 +136,9 @@ def route_list(args: list[str]):
     parser = argparse.ArgumentParser(prog="./artisan route:list")
     parser.add_argument("--path", default="")
     parser.add_argument("-v", "--verbose", action="store_true")
+    parser.add_argument("-vv", "--very-verbose", action="store_true")
+    parser.add_argument("--except-vendor", action="store_true")
+    parser.add_argument("--only-vendor", action="store_true")
     parsed = parser.parse_args(args)
 
     import routes.web  # noqa: F401
@@ -138,17 +148,58 @@ def route_list(args: list[str]):
         pass
     from larajango.routing import router
 
-    middleware_header = " MIDDLEWARE" if parsed.verbose else ""
-    print(f"{'METHOD':<18} {'URI':<30} {'NAME':<24} ACTION{middleware_header}")
-    print("-" * (105 if parsed.verbose else 92))
+    show_middleware = parsed.verbose or parsed.very_verbose
+    middleware_header = " MIDDLEWARE" if show_middleware else ""
+    domain_header = " DOMAIN" if parsed.very_verbose else ""
+    print(f"{'METHOD':<18} {'URI':<30} {'NAME':<24} ACTION{middleware_header}{domain_header}")
+    print("-" * (125 if parsed.very_verbose else 105 if show_middleware else 92))
     for route in router.routes:
         if parsed.path and not route.uri.strip("/").startswith(parsed.path.strip("/")):
             continue
-        action = f"{route.action.__module__}.{route.action.__qualname__}"
+        is_vendor = route.action.__module__.startswith("larajango.") if callable(route.action) else False
+        if parsed.except_vendor and is_vendor:
+            continue
+        if parsed.only_vendor and not is_vendor:
+            continue
+        action = f"{route.action.__module__}.{route.action.__qualname__}" if callable(route.action) else str(route.action)
         methods = "|".join(route.methods)
         middleware = ", ".join(str(item) for item in route.middleware)
-        suffix = f" {middleware}" if parsed.verbose else ""
+        suffix = f" {middleware}" if show_middleware else ""
+        suffix += f" {route.domain or ''}" if parsed.very_verbose else ""
         print(f"{methods:<18} {route.uri:<30} {(route.name or ''):<24} {action}{suffix}")
+
+
+def route_cache():
+    import routes.web  # noqa: F401
+    try:
+        import routes.api  # noqa: F401
+    except ModuleNotFoundError:
+        pass
+    from larajango.routing import router
+
+    cache_path = ROOT / "bootstrap" / "cache" / "routes.json"
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = [
+        {
+            "methods": route.methods,
+            "uri": route.uri,
+            "name": route.name,
+            "middleware": [str(item) for item in route.middleware],
+            "domain": route.domain,
+            "constraints": route.constraints,
+            "action": f"{route.action.__module__}.{route.action.__qualname__}" if callable(route.action) else str(route.action),
+        }
+        for route in router.routes
+    ]
+    cache_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    print(f"Routes cached to {cache_path}.")
+
+
+def route_clear():
+    cache_path = ROOT / "bootstrap" / "cache" / "routes.json"
+    if cache_path.exists():
+        cache_path.unlink()
+    print("Route cache cleared.")
 
 
 def config_show(args: list[str]):

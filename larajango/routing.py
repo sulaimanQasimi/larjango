@@ -8,6 +8,7 @@ from functools import wraps
 from importlib import import_module
 from typing import Callable, Iterable
 
+from django.core.exceptions import ObjectDoesNotExist
 from django.http import Http404, HttpResponseNotAllowed, HttpResponseRedirect
 from django.shortcuts import render
 from django.urls import re_path
@@ -391,7 +392,7 @@ class Router:
 
 def _route_regex(route: Route):
     if route.uri == "/":
-        return r"^/$"
+        return r"^$"
     segments = [segment for segment in route.uri.strip("/").split("/") if segment]
     regex = "^"
     for index, segment in enumerate(segments):
@@ -404,9 +405,11 @@ def _route_regex(route: Route):
             if field_name:
                 route.bindings.setdefault(name, (route.bindings.get(name, (None, field_name))[0], field_name))
             part = rf"(?P<{name}>{expression})"
-            regex += rf"(?:/{part})?" if optional else rf"/{part}"
+            prefix = "/" if regex != "^" else ""
+            regex += rf"(?:{prefix}{part})?" if optional else rf"{prefix}{part}"
         else:
-            regex += "/" + re.escape(segment)
+            prefix = "/" if regex != "^" else ""
+            regex += prefix + re.escape(segment)
     return regex + r"/?$"
 
 
@@ -456,21 +459,24 @@ def _resolve_bindings(route: Route, action: Callable, kwargs: dict):
             if resolved[key] is None:
                 raise Http404()
             continue
-        model_binding = route.bindings.get(key)
-        if model_binding and model_binding[0]:
-            model, field_name = model_binding
-            resolved[key] = model.objects.get(**{field_name: value})
-            continue
-        parameter = signature.parameters.get(key)
-        if parameter and isinstance(parameter.annotation, type):
-            annotation = parameter.annotation
-            if issubclass(annotation, enum.Enum):
-                try:
-                    resolved[key] = annotation(value)
-                except ValueError as exc:
-                    raise Http404() from exc
-            elif hasattr(annotation, "objects"):
-                resolved[key] = annotation.objects.get(pk=value)
+        try:
+            model_binding = route.bindings.get(key)
+            if model_binding and model_binding[0]:
+                model, field_name = model_binding
+                resolved[key] = model.objects.get(**{field_name: value})
+                continue
+            parameter = signature.parameters.get(key)
+            if parameter and isinstance(parameter.annotation, type):
+                annotation = parameter.annotation
+                if issubclass(annotation, enum.Enum):
+                    try:
+                        resolved[key] = annotation(value)
+                    except ValueError as exc:
+                        raise Http404() from exc
+                elif hasattr(annotation, "objects"):
+                    resolved[key] = annotation.objects.get(pk=value)
+        except ObjectDoesNotExist as exc:
+            raise Http404() from exc
     return resolved
 
 

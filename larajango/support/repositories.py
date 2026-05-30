@@ -5,6 +5,7 @@ from django.core.cache import cache as django_cache
 from larajango.authorization import Gate
 from larajango.config import config, env
 from larajango.queue import dispatch
+from larajango.rate_limiting import RateLimiter
 from larajango.routing import router
 from larajango.storage import disk
 
@@ -53,3 +54,4 @@ def register_default_bindings(container):
     container.singleton("storage", StorageManager)
     container.instance("gate", Gate)
     container.singleton("queue", QueueDispatcher)
+    container.instance("rate_limiter", RateLimiter)

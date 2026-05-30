@@ -1,6 +1,6 @@
 # Larajango
 
-Larajango is a Django starter shaped like Laravel 12: controllers in `app/Http/Controllers`, requests in `app/Http/Requests`, middleware in `app/Http/Middleware`, models in `app/Models`, route files in `routes`, config in `config`, an `artisan` command line, and Inertia-style pages in `resources/js/Pages`.
+Larajango is a Django starter shaped like Laravel 13: controllers in `app/Http/Controllers`, requests in `app/Http/Requests`, middleware in `app/Http/Middleware`, models in `app/Models`, route files in `routes`, config in `config`, an `artisan` command line, and Inertia-style pages in `resources/js/Pages`.
 
 ## Quick Start
 
@@ -29,7 +29,10 @@ Open `http://127.0.0.1:8000`.
 ./artisan dev
 ./artisan migrate
 ./artisan route:list -v
+./artisan route:list -vv
 ./artisan route:list --path=api
+./artisan route:cache
+./artisan route:clear
 ./artisan config:show app
 ./artisan config:clear
 ./artisan cache:clear
@@ -58,18 +61,75 @@ python -m larajango new blog
 
 ## Routing
 
-Add routes in `routes/web.py`:
+Larajango tracks Laravel 13's routing API shape as closely as Django reasonably allows. Add routes in `routes/web.py`:
 
 ```python
 from app.Http.Controllers.HomeController import HomeController
 from larajango.routing import router
 
 router.get("/", HomeController.index, name="home")
+router.post("/profile", ProfileController.update)
+router.put("/posts/{post}", PostController.update)
+router.patch("/posts/{post}", PostController.update)
+router.delete("/posts/{post}", PostController.destroy)
+router.options("/ping", lambda request: response(status=204))
+router.match(["GET", "POST"], "/submit", SubmitController.handle)
+router.any("/webhook", WebhookController.handle)
+```
 
+Redirect and view routes are available:
+
+```python
+router.redirect("/home", "/", status=302)
+router.permanent_redirect("/old-home", "/")
+router.view("/welcome", "welcome.html", {"name": "Taylor"})
+```
+
+Route parameters support required, optional, constrained, and catch-all segments:
+
+```python
+router.get("/users/{id}", UserController.show).where_number("id")
+router.get("/users/{name?}", UserController.show).where_alpha("name")
+router.get("/category/{category}", CategoryController.show).where_in("category", ["movie", "song"])
+router.get("/files/{path}", FileController.show).where("path", ".*")
+```
+
+You can define global constraints in `app/Providers/AppServiceProvider.py`:
+
+```python
+from larajango.support import Route
+
+class AppServiceProvider(ServiceProvider):
+    def boot(self):
+        Route.pattern("id", "[0-9]+")
+```
+
+Named routes are generated with `larajango.urls.route`:
+
+```python
+from larajango.urls import route
+
+profile = route("profile")
+```
+
+Groups support middleware, prefixes, names, domains, controller shorthand, and scoped binding flags:
+
+```python
 with router.group(prefix="admin", name="admin.", middleware=["auth"]):
     router.get("/dashboard", HomeController.index, name="dashboard")
 
-router.redirect("/home", "/", status=301)
+router.middleware(["auth", "throttle:api"]).prefix("account").name("account.").group(
+    lambda: router.get("/", AccountController.index, name="index")
+)
+
+router.domain("{account}.example.com").group(
+    lambda: router.get("/dashboard", TenantController.dashboard, name="tenant.dashboard")
+)
+
+router.controller(PostController).prefix("posts").name("posts.").group(lambda: (
+    router.get("/", "index", name="index"),
+    router.post("/", "store", name="store"),
+))
 ```
 
 Controller actions can return normal Django responses or Inertia pages:
@@ -89,9 +149,48 @@ from app.Http.Controllers.PostController import PostController
 from larajango.routing import router
 
 router.resource("posts", PostController)
+router.api_resource("api/posts", PostController)
 ```
 
 API routes live in `routes/api.py` and are automatically prefixed with `/api`.
+
+Route model binding can be explicit:
+
+```python
+from app.Models.Post import Post
+from larajango.support import Route
+
+class AppServiceProvider(ServiceProvider):
+    def boot(self):
+        Route.model("post", Post)
+        Route.bind("slug", lambda value: Post.objects.get(slug=value))
+```
+
+Route parameters can also use Python enum annotations in controller functions. Invalid enum values return 404.
+
+Fallback routes, current-route access, route caching, and method spoofing are included:
+
+```python
+router.fallback(lambda request, path=None: response("Not found", status=404))
+
+current = router.current(request)
+name = router.current_route_name(request)
+action = router.current_route_action(request)
+```
+
+```html
+{% load forms %}
+<form method="POST" action="/posts/1">
+  {% csrf_token %}
+  {% method "PUT" %}
+</form>
+```
+
+```bash
+./artisan route:list -vv
+./artisan route:cache
+./artisan route:clear
+```
 
 ## Middleware
 
@@ -101,7 +200,7 @@ Register middleware aliases and groups in `bootstrap/app.py`:
 from larajango.routing import router
 
 router.alias_middleware("auth", "app.Http.Middleware.Authenticate.Authenticate")
-router.middleware_group("api", ())
+router.middleware_group("api", ("throttle:api",))
 ```
 
 Then attach them to route groups:
@@ -110,6 +209,19 @@ Then attach them to route groups:
 with router.group(prefix="account", middleware=["auth"]):
     router.get("/", AccountController.index, name="account")
 ```
+
+Rate limiters follow Laravel's `Limit` builder style:
+
+```python
+from larajango.rate_limiting import Limit, RateLimiter
+
+RateLimiter.for_("uploads", lambda request: Limit.per_minute(100).by(request.META["REMOTE_ADDR"]))
+
+with router.group(middleware=["throttle:uploads"]):
+    router.post("/upload", UploadController.store)
+```
+
+CORS `OPTIONS` responses are handled by `larajango.middleware.CorsMiddleware`; configure defaults in `config/cors.py` or `.env`.
 
 ## Requests
 
