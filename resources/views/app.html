@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Larajango</title>
+    {% load static %}
+    <script type="module" src="http://127.0.0.1:5173/resources/js/app.jsx"></script>
+    <link rel="stylesheet" href="http://127.0.0.1:5173/resources/css/app.css">
+  </head>
+  <body>
+    <div id="app" data-page='{{ page_json|escape }}'></div>
+  </body>
+</html>
