@@ -1,4 +1,5 @@
 from app.Providers.AppServiceProvider import AppServiceProvider
+from config import csrf
 from larajango.foundation import Middleware
 from larajango.foundation.providers import load_providers
 from larajango.rate_limiting import Limit, RateLimiter
@@ -13,6 +14,12 @@ middleware.alias(
 )
 middleware.group("web", ())
 middleware.group("api", ("throttle:api",))
+middleware.preventRequestForgery(
+    except_paths=csrf.EXCEPT,
+    origin_only=csrf.ORIGIN_ONLY,
+    allow_same_site=csrf.ALLOW_SAME_SITE,
+    xsrf_cookie=csrf.XSRF_COOKIE,
+)
 
 RateLimiter.for_("api", lambda request: Limit.per_minute(60).by(request.META.get("REMOTE_ADDR", "unknown")))
 

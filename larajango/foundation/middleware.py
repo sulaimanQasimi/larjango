@@ -32,6 +32,37 @@ class Middleware:
         self.router.middleware_priority = tuple(middleware)
         return self
 
+    def prevent_request_forgery(
+        self,
+        except_paths=(),
+        origin_only: bool = False,
+        allow_same_site: bool = False,
+        xsrf_cookie: bool = True,
+    ):
+        from larajango.csrf import configure_csrf
+
+        configure_csrf(
+            except_paths=except_paths,
+            origin_only=origin_only,
+            allow_same_site=allow_same_site,
+            xsrf_cookie=xsrf_cookie,
+        )
+        return self
+
+    def preventRequestForgery(
+        self,
+        except_paths=(),
+        origin_only: bool = False,
+        allow_same_site: bool = False,
+        xsrf_cookie: bool = True,
+    ):
+        return self.prevent_request_forgery(
+            except_paths=except_paths,
+            origin_only=origin_only,
+            allow_same_site=allow_same_site,
+            xsrf_cookie=xsrf_cookie,
+        )
+
     def _patch_group(self, name, append, prepend, replace, remove):
         group = list(self.router.middleware_groups.get(name, ()))
         for old, new in replace.items():

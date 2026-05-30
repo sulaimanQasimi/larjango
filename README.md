@@ -183,7 +183,7 @@ action = router.current_route_action(request)
 ```html
 {% load forms %}
 <form method="POST" action="/posts/1">
-  {% csrf_token %}
+  {% csrf %}
   {% method "PUT" %}
 </form>
 ```
@@ -280,6 +280,56 @@ with router.group(middleware=["throttle:uploads"]):
 ```
 
 CORS `OPTIONS` responses are handled by `larajango.middleware.CorsMiddleware`; configure defaults in `config/cors.py` or `.env`.
+
+## CSRF Protection
+
+Larajango uses Django's CSRF engine with Laravel-style configuration and SPA conveniences, following Laravel 13's CSRF model.
+
+Configure request forgery protection in `bootstrap/app.py`:
+
+```python
+middleware.preventRequestForgery(
+    except_paths=["stripe/*", "http://example.com/foo/*"],
+    origin_only=False,
+    allow_same_site=False,
+    xsrf_cookie=True,
+)
+```
+
+The same values may be set in `.env` through `config/csrf.py`:
+
+```env
+CSRF_ORIGIN_ONLY=false
+CSRF_ALLOW_SAME_SITE=false
+CSRF_XSRF_COOKIE=true
+CSRF_EXCEPT=stripe/*,webhook/*
+```
+
+Include a token in HTML forms:
+
+```html
+{% load forms %}
+<form method="POST" action="/profile">
+  {% csrf %}
+  <button type="submit">Save</button>
+</form>
+```
+
+Expose the token to JavaScript with a meta tag:
+
+```html
+{% load forms %}
+{% csrf_meta %}
+```
+
+AJAX requests may send either header:
+
+```text
+X-CSRF-TOKEN: <token>
+X-XSRF-TOKEN: <token>
+```
+
+When enabled, Larajango also sends an `XSRF-TOKEN` cookie for Axios/Angular-style same-origin clients. Modern browser `Sec-Fetch-Site: same-origin` requests are accepted before token fallback; `allow_same_site=True` also accepts `same-site`.
 
 ## Requests
 
