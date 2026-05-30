@@ -49,29 +49,78 @@ class Router:
         self.routes.append(route)
         return route
 
-    def get(self, uri: str, action: Callable, name: str | None = None):
-        return self.add("GET", uri, action, name)
+    def get(
+        self,
+        uri: str,
+        action: Callable,
+        name: str | None = None,
+        middleware: Iterable[str | Callable] | None = None,
+    ):
+        return self.add("GET", uri, action, name, middleware)
 
-    def post(self, uri: str, action: Callable, name: str | None = None):
-        return self.add("POST", uri, action, name)
+    def post(
+        self,
+        uri: str,
+        action: Callable,
+        name: str | None = None,
+        middleware: Iterable[str | Callable] | None = None,
+    ):
+        return self.add("POST", uri, action, name, middleware)
 
-    def put(self, uri: str, action: Callable, name: str | None = None):
-        return self.add("PUT", uri, action, name)
+    def put(
+        self,
+        uri: str,
+        action: Callable,
+        name: str | None = None,
+        middleware: Iterable[str | Callable] | None = None,
+    ):
+        return self.add("PUT", uri, action, name, middleware)
 
-    def patch(self, uri: str, action: Callable, name: str | None = None):
-        return self.add("PATCH", uri, action, name)
+    def patch(
+        self,
+        uri: str,
+        action: Callable,
+        name: str | None = None,
+        middleware: Iterable[str | Callable] | None = None,
+    ):
+        return self.add("PATCH", uri, action, name, middleware)
 
-    def delete(self, uri: str, action: Callable, name: str | None = None):
-        return self.add("DELETE", uri, action, name)
+    def delete(
+        self,
+        uri: str,
+        action: Callable,
+        name: str | None = None,
+        middleware: Iterable[str | Callable] | None = None,
+    ):
+        return self.add("DELETE", uri, action, name, middleware)
 
-    def options(self, uri: str, action: Callable, name: str | None = None):
-        return self.add("OPTIONS", uri, action, name)
+    def options(
+        self,
+        uri: str,
+        action: Callable,
+        name: str | None = None,
+        middleware: Iterable[str | Callable] | None = None,
+    ):
+        return self.add("OPTIONS", uri, action, name, middleware)
 
-    def match(self, methods: Iterable[str], uri: str, action: Callable, name: str | None = None):
-        return self.add(methods, uri, action, name)
+    def match(
+        self,
+        methods: Iterable[str],
+        uri: str,
+        action: Callable,
+        name: str | None = None,
+        middleware: Iterable[str | Callable] | None = None,
+    ):
+        return self.add(methods, uri, action, name, middleware)
 
-    def any(self, uri: str, action: Callable, name: str | None = None):
-        return self.add(("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"), uri, action, name)
+    def any(
+        self,
+        uri: str,
+        action: Callable,
+        name: str | None = None,
+        middleware: Iterable[str | Callable] | None = None,
+    ):
+        return self.add(("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"), uri, action, name, middleware)
 
     def redirect(self, uri: str, destination: str, status: int = 302, name: str | None = None):
         def action(request, *args, **kwargs):
@@ -169,7 +218,7 @@ def _route_view(route: Route, router: Router):
     for middleware in reversed(route.middleware):
         resolved = router._resolve_middleware(middleware)
         if isinstance(resolved, list):
-            for item in reversed(resolved):
+            for item in reversed(list(_flatten_middleware(resolved))):
                 action = item(action)
         else:
             action = resolved(action)
@@ -178,9 +227,18 @@ def _route_view(route: Route, router: Router):
     def view(request, *args, **kwargs):
         if request.method.upper() not in route.methods:
             return HttpResponseNotAllowed(route.methods)
+        request.route = route
         return action(request, *args, **kwargs)
 
     return view
 
 
 router = Router()
+
+
+def _flatten_middleware(middleware):
+    for item in middleware:
+        if isinstance(item, list):
+            yield from _flatten_middleware(item)
+        else:
+            yield item

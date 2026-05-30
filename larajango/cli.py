@@ -4,6 +4,7 @@ import argparse
 from datetime import datetime
 from importlib import import_module
 import os
+import secrets
 import shutil
 import subprocess
 import sys
@@ -43,8 +44,16 @@ def main(argv: list[str] | None = None):
         return route_list(args)
     if command == "config:show":
         return config_show(args)
+    if command == "config:clear":
+        return config_clear()
+    if command == "cache:clear":
+        return cache_clear()
     if command == "db:seed":
         return db_seed(args)
+    if command == "key:generate":
+        return key_generate()
+    if command == "storage:link":
+        return storage_link()
     if command == "install:api":
         return install_api()
     if command == "make:controller":
@@ -57,6 +66,10 @@ def main(argv: list[str] | None = None):
         return make_request(args)
     if command == "make:seeder":
         return make_seeder(args)
+    if command == "make:policy":
+        return make_policy(args)
+    if command == "make:job":
+        return make_job(args)
     if command == "make:migration":
         return make_migration(args)
     if command == "inertia:page":
@@ -81,12 +94,18 @@ Usage:
   ./artisan dev
   ./artisan route:list
   ./artisan config:show app
+  ./artisan config:clear
+  ./artisan cache:clear
   ./artisan db:seed
+  ./artisan key:generate
+  ./artisan storage:link
   ./artisan make:controller NameController
   ./artisan make:model Name
   ./artisan make:middleware EnsureUserIsAdmin
   ./artisan make:request StorePostRequest
   ./artisan make:seeder UserSeeder
+  ./artisan make:policy PostPolicy
+  ./artisan make:job SendWelcomeEmail
   ./artisan make:migration create_posts_table
   ./artisan inertia:page Dashboard/Index
   python -m larajango new project_name
@@ -136,12 +155,62 @@ def config_show(args: list[str]):
         print(f"{namespace}.{key.lower()}={getattr(module, key)}")
 
 
+def config_clear():
+    from larajango.config import config
+
+    config.cache_clear()
+    print("Configuration cache cleared.")
+
+
+def cache_clear():
+    from django.core.cache import cache
+
+    cache.clear()
+    print("Application cache cleared.")
+
+
 def db_seed(args: list[str]):
     class_name = args[0] if args else "DatabaseSeeder"
     module = import_module(f"database.seeders.{class_name}")
     seeder = getattr(module, class_name)()
     seeder.run()
     print(f"Seeded with {class_name}.")
+
+
+def key_generate():
+    key = "base64:" + secrets.token_urlsafe(48)
+    env_path = ROOT / ".env"
+    if env_path.exists():
+        lines = env_path.read_text(encoding="utf-8").splitlines()
+    else:
+        example = ROOT / ".env.example"
+        lines = example.read_text(encoding="utf-8").splitlines() if example.exists() else []
+
+    replaced = False
+    next_lines = []
+    for line in lines:
+        if line.startswith("APP_KEY="):
+            next_lines.append(f"APP_KEY={key}")
+            replaced = True
+        else:
+            next_lines.append(line)
+    if not replaced:
+        next_lines.append(f"APP_KEY={key}")
+
+    env_path.write_text("\n".join(next_lines) + "\n", encoding="utf-8")
+    print("Application key set successfully.")
+
+
+def storage_link():
+    public_link = ROOT / "public" / "storage"
+    target = ROOT / "storage" / "app" / "public"
+    target.mkdir(parents=True, exist_ok=True)
+    public_link.parent.mkdir(parents=True, exist_ok=True)
+    if public_link.exists():
+        print("The public storage link already exists.")
+        return
+    public_link.symlink_to(target, target_is_directory=True)
+    print(f"Linked {public_link} -> {target}")
 
 
 def install_api():
@@ -251,6 +320,40 @@ def make_seeder(args: list[str]):
         path,
         f'''class {class_name}:
     def run(self):
+        pass
+''',
+    )
+
+
+def make_policy(args: list[str]):
+    name = require_name(args, "policy name")
+    class_name = name if name.endswith("Policy") else f"{name}Policy"
+    path = ROOT / "app" / "Policies" / f"{class_name}.py"
+    create_file(
+        path,
+        f'''class {class_name}:
+    def view(self, user, model):
+        return True
+
+    def create(self, user):
+        return user.is_authenticated
+
+    def update(self, user, model):
+        return user.is_authenticated
+
+    def delete(self, user, model):
+        return user.is_authenticated
+''',
+    )
+
+
+def make_job(args: list[str]):
+    name = require_name(args, "job name")
+    path = ROOT / "app" / "Jobs" / f"{name}.py"
+    create_file(
+        path,
+        f'''class {name}:
+    def handle(self):
         pass
 ''',
     )

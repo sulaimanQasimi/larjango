@@ -7,7 +7,7 @@ load_env(BASE_DIR / ".env")
 
 SECRET_KEY = env("APP_KEY", "larajango-dev-secret-key")
 DEBUG = env("APP_DEBUG", True)
-ALLOWED_HOSTS = [host for host in str(env("APP_HOSTS", "")).split(",") if host]
+ALLOWED_HOSTS = [host for host in str(env("APP_HOSTS", "127.0.0.1,localhost,testserver")).split(",") if host]
 
 INSTALLED_APPS = [
     "app.apps.Application",
@@ -64,3 +64,10 @@ USE_TZ = True
 STATIC_URL = "static/"
 STATICFILES_DIRS = [BASE_DIR / "public"]
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "larajango",
+    }
+}
