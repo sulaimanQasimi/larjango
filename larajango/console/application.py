@@ -70,6 +70,8 @@ def main(argv: list[str] | None = None):
         return make_policy(args)
     if command == "make:job":
         return make_job(args)
+    if command == "make:provider":
+        return make_provider(args)
     if command == "make:migration":
         return make_migration(args)
     if command == "inertia:page":
@@ -106,6 +108,7 @@ Usage:
   ./artisan make:seeder UserSeeder
   ./artisan make:policy PostPolicy
   ./artisan make:job SendWelcomeEmail
+  ./artisan make:provider AppServiceProvider
   ./artisan make:migration create_posts_table
   ./artisan inertia:page Dashboard/Index
   python -m larajango new project_name
@@ -354,6 +357,25 @@ def make_job(args: list[str]):
         path,
         f'''class {name}:
     def handle(self):
+        pass
+''',
+    )
+
+
+def make_provider(args: list[str]):
+    name = require_name(args, "provider name")
+    class_name = name if name.endswith("Provider") else f"{name}Provider"
+    path = ROOT / "app" / "Providers" / f"{class_name}.py"
+    create_file(
+        path,
+        f'''from larajango.foundation import ServiceProvider
+
+
+class {class_name}(ServiceProvider):
+    def register(self):
+        pass
+
+    def boot(self):
         pass
 ''',
     )

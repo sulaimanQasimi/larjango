@@ -44,6 +44,7 @@ Open `http://127.0.0.1:8000`.
 ./artisan make:seeder UserSeeder
 ./artisan make:policy PostPolicy
 ./artisan make:job SendWelcomeEmail
+./artisan make:provider AppServiceProvider
 ./artisan make:migration create_posts_table
 ./artisan inertia:page Posts/Index
 ./artisan install:api
@@ -133,6 +134,52 @@ from larajango.config import config, env
 
 name = config("app.name")
 debug = env("APP_DEBUG", False)
+```
+
+## Framework Package Structure
+
+Larajango keeps old imports such as `larajango.routing` and `larajango.cache` working, but the framework package is now organized around clearer Laravel-style boundaries:
+
+```text
+larajango/
+  console/        Artisan-style command application
+  contracts/      Protocol interfaces for routing, cache, filesystem, queue, auth, config, HTTP
+  foundation/     Application container and service provider base classes
+  http/           HTTP factories and adapters
+  support/        Facades and concrete repositories
+  templatetags/   Django template tags for routes and Vite
+```
+
+Use contracts for type hints when your application code depends on framework services:
+
+```python
+from larajango.contracts.routing import RouterContract
+
+def register_admin_routes(router: RouterContract):
+    router.get("/admin", AdminController.index, name="admin")
+```
+
+Use service providers to register application services:
+
+```python
+from larajango.foundation import ServiceProvider
+
+class AppServiceProvider(ServiceProvider):
+    def register(self):
+        self.app.singleton("reports", lambda: ReportService())
+```
+
+Providers are loaded from `bootstrap/app.py`.
+
+Facades are available from `larajango.support`:
+
+```python
+from larajango.support import Cache, Config, Queue, Route, Storage
+
+name = Config.get("app.name")
+Cache.set("key", "value", 60)
+path = Storage.disk("public").put("demo.txt", "Hello")
+Queue.dispatch(lambda: "done")
 ```
 
 ## URL And Responses

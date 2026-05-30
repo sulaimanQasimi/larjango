@@ -7,15 +7,17 @@ from larajango.support.repositories import register_default_bindings
 register_default_bindings(app)
 
 
-class Facade:
+class FacadeMeta(type):
+    def __getattr__(cls, name):
+        return getattr(cls.root(), name)
+
+
+class Facade(metaclass=FacadeMeta):
     accessor: str = ""
 
     @classmethod
     def root(cls):
         return app.make(cls.accessor)
-
-    def __getattr__(self, name):
-        return getattr(self.root(), name)
 
 
 class Route(Facade):

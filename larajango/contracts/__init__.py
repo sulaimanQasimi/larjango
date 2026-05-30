@@ -5,6 +5,7 @@ from larajango.contracts.filesystem import FilesystemDiskContract
 from larajango.contracts.http import FormRequestContract, ResponseFactoryContract
 from larajango.contracts.queue import DispatcherContract
 from larajango.contracts.routing import RouteContract, RouterContract
+from larajango.contracts.support import ServiceProviderContract
 
 __all__ = [
     "CacheRepositoryContract",
@@ -16,4 +17,5 @@ __all__ = [
     "ResponseFactoryContract",
     "RouteContract",
     "RouterContract",
+    "ServiceProviderContract",
 ]
