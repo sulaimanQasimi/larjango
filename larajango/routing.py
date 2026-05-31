@@ -10,12 +10,12 @@ from typing import Callable, Iterable
 
 from django.core.exceptions import ObjectDoesNotExist
 from django.http import Http404, HttpResponseNotAllowed, HttpResponseRedirect
-from django.shortcuts import render
 from django.urls import re_path
 
 from larajango.controllers import Middleware as ControllerMiddleware
 from larajango.http.request import Request as LarajangoRequest, larajango_request
 from larajango.responses import FluentResponse, response as make_response
+from larajango.views import view as make_view
 
 
 RESOURCE_ACTIONS = ("index", "create", "store", "show", "edit", "update", "destroy")
@@ -270,7 +270,7 @@ class Router:
 
     def view(self, uri: str, template: str, data: dict | None = None, name: str | None = None):
         def action(request, *args, **kwargs):
-            return render(request, template, data or {})
+            return make_view(template, data)
 
         return self.get(uri, action, name)
 
@@ -691,7 +691,7 @@ def _route_view(route: Route, router: Router):
             if route.missing_handler:
                 return route.missing_handler(request)
             raise
-        response = _normalize_response(_call_action(action, request, args, bound_kwargs))
+        response = _normalize_response(_call_action(action, request, args, bound_kwargs), request)
         for middleware in reversed(terminable):
             middleware.terminate(request, response)
         return response
@@ -757,9 +757,14 @@ def _call_action(action, request, args, kwargs):
     return action(request, *args, **kwargs)
 
 
-def _normalize_response(value):
+def _normalize_response(value, request=None):
     if isinstance(value, FluentResponse):
         return value.to_response()
+    if hasattr(value, "to_response") and callable(value.to_response):
+        try:
+            return value.to_response(request)
+        except TypeError:
+            return value.to_response()
     if hasattr(value, "status_code") and hasattr(value, "__setitem__"):
         return value
     if hasattr(value, "values") and callable(value.values):

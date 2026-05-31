@@ -7,6 +7,7 @@ from larajango.contracts.queue import DispatcherContract
 from larajango.contracts.rate_limiting import RateLimiterContract
 from larajango.contracts.routing import RouteContract, RouterContract
 from larajango.contracts.support import ServiceProviderContract
+from larajango.contracts.views import ViewFactoryContract, ViewInstanceContract
 
 __all__ = [
     "CacheRepositoryContract",
@@ -21,4 +22,6 @@ __all__ = [
     "RouteContract",
     "RouterContract",
     "ServiceProviderContract",
+    "ViewFactoryContract",
+    "ViewInstanceContract",
 ]

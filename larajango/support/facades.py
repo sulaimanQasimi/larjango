@@ -58,3 +58,7 @@ class Response(Facade):
 
 class Cookie(Facade):
     accessor = "cookie"
+
+
+class View(Facade):
+    accessor = "view"

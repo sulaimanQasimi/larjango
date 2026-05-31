@@ -6,7 +6,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from django.http import FileResponse, HttpResponse, JsonResponse, StreamingHttpResponse
-from django.shortcuts import redirect, render
+from django.shortcuts import redirect
 from django.urls import reverse
 
 
@@ -131,8 +131,9 @@ class ResponseFactory:
         return json(data, status, headers)
 
     def view(self, request, template: str, data: dict | None = None, status: int = 200, headers: dict | None = None):
-        res = render(request, template, data or {}, status=status)
-        return FluentResponse(_apply_headers(res, headers))
+        from larajango.views import View
+
+        return FluentResponse(_apply_headers(View.make(template, data).to_response(request, status), headers))
 
     def redirect(self, to="/", *args, **kwargs):
         return redirect_to(to, *args, **kwargs)
@@ -230,8 +231,20 @@ def json(data, status: int = 200, headers: dict | None = None):
     return FluentResponse(_apply_headers(res, headers))
 
 
-def view(request, template: str, data: dict | None = None, status: int = 200):
-    return ResponseFactory().view(request, template, data, status)
+def view(*args, **kwargs):
+    from larajango.views import View
+
+    if args and hasattr(args[0], "META"):
+        request = args[0]
+        template = args[1]
+        data = args[2] if len(args) > 2 else kwargs.get("data")
+        status = args[3] if len(args) > 3 else kwargs.get("status", 200)
+        headers = kwargs.get("headers")
+        return ResponseFactory().view(request, template, data, status, headers)
+
+    name = args[0] if args else kwargs["name"]
+    data = args[1] if len(args) > 1 else kwargs.get("data")
+    return View.make(name, data)
 
 
 def redirect_to(to="/", *args, **kwargs):

@@ -47,6 +47,10 @@ def main(argv: list[str] | None = None):
         return route_cache()
     if command == "route:clear":
         return route_clear()
+    if command == "view:cache":
+        return view_cache()
+    if command == "view:clear":
+        return view_clear()
     if command == "config:show":
         return config_show(args)
     if command == "config:clear":
@@ -69,6 +73,8 @@ def main(argv: list[str] | None = None):
         return make_middleware(args)
     if command == "make:request":
         return make_request(args)
+    if command == "make:view":
+        return make_view(args)
     if command == "make:seeder":
         return make_seeder(args)
     if command == "make:policy":
@@ -102,6 +108,8 @@ Usage:
   ./artisan route:list
   ./artisan route:cache
   ./artisan route:clear
+  ./artisan view:cache
+  ./artisan view:clear
   ./artisan config:show app
   ./artisan config:clear
   ./artisan cache:clear
@@ -117,6 +125,7 @@ Usage:
   ./artisan make:middleware EnsureUserHasRole --parameters role
   ./artisan make:middleware LogAfterResponse --terminable
   ./artisan make:request StorePostRequest
+  ./artisan make:view greeting
   ./artisan make:seeder UserSeeder
   ./artisan make:policy PostPolicy
   ./artisan make:job SendWelcomeEmail
@@ -205,6 +214,36 @@ def route_clear():
     if cache_path.exists():
         cache_path.unlink()
     print("Route cache cleared.")
+
+
+def view_cache():
+    import django
+    from django.template.loader import get_template
+
+    django.setup()
+    views_root = ROOT / "resources" / "views"
+    cache_path = ROOT / "bootstrap" / "cache" / "views.json"
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = []
+    for path in sorted(views_root.rglob("*.html")):
+        template = path.relative_to(views_root).as_posix()
+        get_template(template)
+        payload.append(
+            {
+                "name": template.removesuffix(".html").replace("/", "."),
+                "template": template,
+                "mtime": path.stat().st_mtime,
+            }
+        )
+    cache_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    print(f"Views cached to {cache_path}.")
+
+
+def view_clear():
+    cache_path = ROOT / "bootstrap" / "cache" / "views.json"
+    if cache_path.exists():
+        cache_path.unlink()
+    print("View cache cleared.")
 
 
 def config_show(args: list[str]):
@@ -392,6 +431,29 @@ class {name}(FormRequest):
     rules = {{
         "name": "required|max:255",
     }}
+''',
+    )
+
+
+def make_view(args: list[str]):
+    from larajango.views import normalize_view_name
+
+    name = require_name(args, "view name")
+    path = ROOT / "resources" / "views" / normalize_view_name(name)
+    title = Path(name).stem.replace("_", " ").replace("-", " ").title() or "View"
+    create_file(
+        path,
+        f'''<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{title}</title>
+</head>
+<body>
+    <h1>{title}</h1>
+</body>
+</html>
 ''',
     )
 

@@ -72,6 +72,7 @@ The Python requirements include `django-vite` and `inertia-django`; install them
 ./artisan make:middleware EnsureUserHasRole --parameters role
 ./artisan make:middleware LogAfterResponse --terminable
 ./artisan make:request StorePostRequest
+./artisan make:view greeting
 ./artisan make:seeder UserSeeder
 ./artisan make:policy PostPolicy
 ./artisan make:job SendWelcomeEmail
@@ -110,7 +111,7 @@ Redirect and view routes are available:
 ```python
 router.redirect("/home", "/", status=302)
 router.permanent_redirect("/old-home", "/")
-router.view("/welcome", "welcome.html", {"name": "Taylor"})
+router.view("/welcome", "welcome", {"name": "Taylor"})
 ```
 
 Route parameters support required, optional, constrained, and catch-all segments:
@@ -592,12 +593,62 @@ Providers are loaded from `bootstrap/app.py`.
 Facades are available from `larajango.support`:
 
 ```python
-from larajango.support import Cache, Config, Cookie, Queue, Response, Route, Storage
+from larajango.support import Cache, Config, Cookie, Queue, Response, Route, Storage, View
 
 name = Config.get("app.name")
 Cache.set("key", "value", 60)
 path = Storage.disk("public").put("demo.txt", "Hello")
 Queue.dispatch(lambda: "done")
+```
+
+## Views
+
+Views live in `resources/views` and use Django templates with Laravel-style names. Create one from the CLI:
+
+```bash
+./artisan make:view greeting
+./artisan make:view admin.profile
+```
+
+Return views from routes and controllers with the helper or facade:
+
+```python
+from larajango.responses import view
+from larajango.support import View
+
+return view("greeting", {"name": "James"})
+return view("greeting").with_("name", "Victoria").with_("occupation", "Astronaut")
+return View.make("admin.profile", {"user": request.user})
+```
+
+Dot notation maps to nested files, so `admin.profile` resolves to `resources/views/admin/profile.html`. Packages and apps can use fallback views and existence checks:
+
+```python
+return View.first(["custom.admin", "admin.profile"], {"user": request.user})
+
+if View.exists("admin.profile"):
+    ...
+```
+
+Share data or register composers from a service provider:
+
+```python
+from larajango.foundation import ServiceProvider
+from larajango.support import View
+
+
+class AppServiceProvider(ServiceProvider):
+    def boot(self):
+        View.share("app_name", "Larajango")
+        View.composer(["profile", "dashboard"], lambda view: view.with_("count", 10))
+        View.creator("*", lambda view: view.with_("created_by", "creator hook"))
+```
+
+View composers run right before rendering; creators run as soon as the view instance is created. `*` may be used as a wildcard. For deployment-style validation, cache the view manifest and clear it later:
+
+```bash
+./artisan view:cache
+./artisan view:clear
 ```
 
 ## URL And Responses
@@ -618,6 +669,7 @@ from larajango.responses import back, download, event_stream, file, json, redire
 
 return response("Hello", 200).header("Content-Type", "text/plain")
 return json({"ok": True}).with_callback(request.larajango.input("callback"))
+return view("profile", {"user": request.user})
 return view(request, "profile.html", {"user": request.user}, 200)
 return download("/tmp/report.csv", "report.csv")
 return file("/tmp/report.pdf")

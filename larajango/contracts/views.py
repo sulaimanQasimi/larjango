@@ -1,0 +1,29 @@
+from __future__ import annotations
+
+from typing import Protocol
+
+
+class ViewInstanceContract(Protocol):
+    name: str
+    template: str
+    data: dict
+
+    def with_(self, key: str | dict, value=None): ...
+
+    def render(self, request=None): ...
+
+    def to_response(self, request=None, status: int = 200, headers: dict | None = None): ...
+
+
+class ViewFactoryContract(Protocol):
+    def make(self, name: str, data: dict | None = None): ...
+
+    def first(self, names, data: dict | None = None): ...
+
+    def exists(self, name: str) -> bool: ...
+
+    def share(self, key: str | dict, value=None): ...
+
+    def composer(self, views, composer): ...
+
+    def creator(self, views, creator): ...
