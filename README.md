@@ -439,7 +439,94 @@ When enabled, Larajango also sends an `XSRF-TOKEN` cookie for Axios/Angular-styl
 
 ## Requests
 
-Form requests provide Laravel-style validation:
+Larajango attaches a Laravel-style request wrapper at `request.larajango`. You can also type-hint `larajango.http.request.Request` on controller or route actions to receive it directly:
+
+```python
+from django.http import JsonResponse
+from larajango.http.request import Request
+
+def store(request: Request):
+    return JsonResponse({
+        "name": request.input("user.name"),
+        "admin": request.boolean("admin"),
+        "page": request.integer("page", 1),
+        "token": request.bearer_token(),
+        "ip": request.ip(),
+    })
+```
+
+Request helpers mirror Laravel's request API where they map cleanly to Django:
+
+```python
+request.path()
+request.is_("admin/*")
+request.route_is("admin.*")
+request.url()
+request.full_url()
+request.full_url_with_query({"type": "phone"})
+request.full_url_without_query(["type"])
+request.host()
+request.http_host()
+request.scheme_and_http_host()
+request.method()
+request.is_method("POST")
+request.header("X-Header-Name", "default")
+request.has_header("X-Header-Name")
+request.bearer_token()
+request.ip()
+request.ips()
+request.accepts(["text/html", "application/json"])
+request.prefers(["text/html", "application/json"])
+request.expects_json()
+request.wants_markdown()
+request.accepts_markdown()
+```
+
+Input helpers support dot notation, JSON bodies, type coercion, presence checks, merging, old input, cookies, and files:
+
+```python
+request.all()
+request.input("products.0.name")
+request.query("name", "Helen")
+request.string("name")
+request.integer("per_page", 15)
+request.boolean("archived")
+request.array("versions")
+request.date("birthday")
+request.interval("timeout", "second")
+request.enum("status", Status, Status.pending)
+request.enums("products", Product)
+request.only("username", "password")
+request.except_("credit_card")
+request.has(["name", "email"])
+request.has_any(["name", "email"])
+request.filled("name")
+request.is_not_filled(["name", "email"])
+request.any_filled(["name", "email"])
+request.missing("name")
+request.merge({"votes": 0})
+request.merge_if_missing({"votes": 0})
+request.flash()
+request.flash_only(["username", "email"])
+request.flash_except(["password"])
+request.old("username")
+request.cookie("name")
+request.file("photo")
+request.has_file("photo")
+request.file("photo").store("images", "public")
+request.file("photo").store_as("images", "avatar.jpg", "public")
+```
+
+Input trimming, empty-string normalization, trusted proxies, and trusted hosts are configured in `bootstrap/app.py`:
+
+```python
+middleware.trimStrings(except_=[lambda request: request.larajango.is_("admin/*")])
+middleware.convertEmptyStringsToNull(except_=[lambda request: request.larajango.is_("admin/*")])
+middleware.trustProxies(at="*")
+middleware.trustHosts(at=[r"^larajango\.test$"], subdomains=False)
+```
+
+Form requests provide Laravel-style validation and can be used as decorators or action type hints:
 
 ```python
 from app.Http.Requests.StorePostRequest import StorePostRequest
@@ -449,7 +536,12 @@ class PostController:
     @validate(StorePostRequest)
     def store(request):
         data = request.validated
+
+    def update(request: StorePostRequest, post):
+        data = request.validated()
 ```
+
+Form requests may define `authorize`, `prepare_for_validation`, and `passed_validation`. Precognition-style checks are supported with the `Precognition` request header.
 
 ## Configuration
 
@@ -500,7 +592,7 @@ Providers are loaded from `bootstrap/app.py`.
 Facades are available from `larajango.support`:
 
 ```python
-from larajango.support import Cache, Config, Queue, Route, Storage
+from larajango.support import Cache, Config, Cookie, Queue, Response, Route, Storage
 
 name = Config.get("app.name")
 Cache.set("key", "value", 60)
@@ -522,9 +614,67 @@ api_url = route("api.health")
 Return common response types:
 
 ```python
-from larajango.responses import back, json, redirect_to, response, view
+from larajango.responses import back, download, event_stream, file, json, redirect_to, response, stream, view
 
-return json({"ok": True})
-return redirect_to("home")
-return back(request)
+return response("Hello", 200).header("Content-Type", "text/plain")
+return json({"ok": True}).with_callback(request.larajango.input("callback"))
+return view(request, "profile.html", {"user": request.user}, 200)
+return download("/tmp/report.csv", "report.csv")
+return file("/tmp/report.pdf")
+return stream(lambda: (chunk for chunk in ["a", "b"]))
+return event_stream(["started", "finished"])
+return redirect_to("/dashboard").with_(request, "status", "Saved.")
+return back(request).with_input(request)
+```
+
+Routes and controllers may also return strings, dictionaries, lists, Django models, or querysets; Larajango converts them to HTTP responses automatically.
+
+Responses are fluent and support headers, cookies, cache headers, and JSONP:
+
+```python
+return (
+    response("Cached")
+    .with_headers({"X-App": "Larajango"})
+    .without_header("X-Debug")
+    .cookie("mode", "dark", 60)
+    .without_cookie("old")
+    .cache_headers("public;max_age=30;etag")
+)
+```
+
+Redirect helpers support named routes, controller actions, external URLs, flash data, and old input:
+
+```python
+return redirect_to().route("login")
+return redirect_to().action((UserController, "index"))
+return redirect_to().away("https://example.com")
+return redirect_to("/dashboard").with_(request, "status", "Profile updated!")
+return back(request).with_input(request)
+```
+
+Queue cookies before a response exists:
+
+```python
+from larajango.support import Cookie
+
+Cookie.queue("name", "value", 60)
+Cookie.expire("old")
+```
+
+Use the Laravel-style cache header middleware on routes:
+
+```python
+router.middleware("cache.headers:public;max_age=30;s_maxage=300;stale_while_revalidate=600;etag").group(
+    lambda: router.get("/privacy", PrivacyController.show)
+)
+```
+
+Response macros let you add project-specific response builders:
+
+```python
+from larajango.responses import ResponseFactory
+
+ResponseFactory.macro("caps", lambda self, value: self.make(value.upper()))
+
+return response().caps("hello")
 ```

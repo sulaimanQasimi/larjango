@@ -31,9 +31,15 @@ class Request:
         path = self.path()
         return any(fnmatch.fnmatch(path, pattern.strip("/")) for pattern in patterns)
 
+    def isPath(self, *patterns: str):
+        return self.is_(*patterns)
+
     def route_is(self, *patterns: str):
         name = getattr(getattr(self.request, "route", None), "name", "") or ""
         return any(fnmatch.fnmatch(name, pattern) for pattern in patterns)
+
+    def routeIs(self, *patterns: str):
+        return self.route_is(*patterns)
 
     def url(self):
         return self.request.build_absolute_uri(self.request.path)
@@ -41,11 +47,17 @@ class Request:
     def full_url(self):
         return self.request.build_absolute_uri()
 
+    def fullUrl(self):
+        return self.full_url()
+
     def full_url_with_query(self, values: dict):
         query = self.request.GET.copy()
         for key, value in values.items():
             query[key] = value
         return _replace_query(self.full_url(), query.urlencode())
+
+    def fullUrlWithQuery(self, values: dict):
+        return self.full_url_with_query(values)
 
     def full_url_without_query(self, keys):
         keys = {keys} if isinstance(keys, str) else set(keys)
@@ -54,14 +66,23 @@ class Request:
             query.pop(key, None)
         return _replace_query(self.full_url(), query.urlencode())
 
+    def fullUrlWithoutQuery(self, keys):
+        return self.full_url_without_query(keys)
+
     def host(self):
         return self.request.get_host().split(":", 1)[0]
 
     def http_host(self):
         return self.request.get_host()
 
+    def httpHost(self):
+        return self.http_host()
+
     def scheme_and_http_host(self):
         return f"{self.request.scheme}://{self.request.get_host()}"
+
+    def schemeAndHttpHost(self):
+        return self.scheme_and_http_host()
 
     def method(self):
         return self.request.method.upper()
@@ -69,16 +90,25 @@ class Request:
     def is_method(self, method: str):
         return self.method() == method.upper()
 
+    def isMethod(self, method: str):
+        return self.is_method(method)
+
     def header(self, name: str, default=None):
         return self.request.headers.get(name, default)
 
     def has_header(self, name: str):
         return name in self.request.headers
 
+    def hasHeader(self, name: str):
+        return self.has_header(name)
+
     def bearer_token(self):
         value = self.header("Authorization", "")
         prefix = "Bearer "
         return value[len(prefix):] if value.startswith(prefix) else ""
+
+    def bearerToken(self):
+        return self.bearer_token()
 
     def ip(self):
         return self.ips()[-1]
@@ -92,6 +122,9 @@ class Request:
     def acceptable_content_types(self):
         header = self.header("Accept", "*/*")
         return [part.split(";", 1)[0].strip() for part in header.split(",") if part.strip()]
+
+    def getAcceptableContentTypes(self):
+        return self.acceptable_content_types()
 
     def accepts(self, content_types):
         content_types = (content_types,) if isinstance(content_types, str) else tuple(content_types)
@@ -107,11 +140,20 @@ class Request:
     def expects_json(self):
         return self.accepts("application/json") or self.header("X-Requested-With") == "XMLHttpRequest"
 
+    def expectsJson(self):
+        return self.expects_json()
+
     def wants_markdown(self):
         return (self.acceptable_content_types() or [""])[0] == "text/markdown"
 
+    def wantsMarkdown(self):
+        return self.wants_markdown()
+
     def accepts_markdown(self):
         return self.accepts("text/markdown")
+
+    def acceptsMarkdown(self):
+        return self.accepts_markdown()
 
     def all(self):
         return self.input()
@@ -195,6 +237,9 @@ class Request:
     def has_any(self, keys):
         return any(self.input(key, MISSING) is not MISSING for key in keys)
 
+    def hasAny(self, keys):
+        return self.has_any(keys)
+
     def filled(self, key):
         return self.input(key, "") not in ("", None)
 
@@ -202,8 +247,14 @@ class Request:
         keys = (keys,) if isinstance(keys, str) else tuple(keys)
         return all(not self.filled(key) for key in keys)
 
+    def isNotFilled(self, keys):
+        return self.is_not_filled(keys)
+
     def any_filled(self, keys):
         return any(self.filled(key) for key in keys)
+
+    def anyFilled(self, keys):
+        return self.any_filled(keys)
 
     def missing(self, key):
         return self.input(key, MISSING) is MISSING
@@ -211,11 +262,20 @@ class Request:
     def when_has(self, key, callback, default=None):
         return callback(self.input(key)) if self.has(key) else default() if default else None
 
+    def whenHas(self, key, callback, default=None):
+        return self.when_has(key, callback, default)
+
     def when_filled(self, key, callback, default=None):
         return callback(self.input(key)) if self.filled(key) else default() if default else None
 
+    def whenFilled(self, key, callback, default=None):
+        return self.when_filled(key, callback, default)
+
     def when_missing(self, key, callback, default=None):
         return callback() if self.missing(key) else default() if default else None
+
+    def whenMissing(self, key, callback, default=None):
+        return self.when_missing(key, callback, default)
 
     def merge(self, values: dict):
         self._merged_input.update(values)
@@ -227,14 +287,23 @@ class Request:
                 self._merged_input[key] = value
         self.request._larajango_input = self._merged_input
 
+    def mergeIfMissing(self, values: dict):
+        return self.merge_if_missing(values)
+
     def flash(self):
         self.request.session["_old_input"] = self.input()
 
     def flash_only(self, keys):
         self.request.session["_old_input"] = self.only(*_flatten_keys((keys,)))
 
+    def flashOnly(self, keys):
+        return self.flash_only(keys)
+
     def flash_except(self, keys):
         self.request.session["_old_input"] = self.except_(*_flatten_keys((keys,)))
+
+    def flashExcept(self, keys):
+        return self.flash_except(keys)
 
     def old(self, key: str, default=None):
         return self.request.session.get("_old_input", {}).get(key, default)
@@ -248,6 +317,9 @@ class Request:
 
     def has_file(self, key: str):
         return key in self.request.FILES
+
+    def hasFile(self, key: str):
+        return self.has_file(key)
 
     def __getattr__(self, name):
         value = self.input(name, MISSING)
@@ -281,6 +353,9 @@ class UploadedFile:
     def is_valid(self):
         return bool(self.file)
 
+    def isValid(self):
+        return self.is_valid()
+
     def path(self):
         return getattr(self.file, "temporary_file_path", lambda: "")()
 
@@ -299,6 +374,9 @@ class UploadedFile:
         content = b"".join(self.file.chunks())
         disk(disk_name).put(name, content)
         return name
+
+    def storeAs(self, path: str, filename: str, disk_name: str = "local"):
+        return self.store_as(path, filename, disk_name)
 
 
 def larajango_request(request):

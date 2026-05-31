@@ -524,8 +524,8 @@ def resource_controller_stub(class_name: str, api: bool = False, model: str = ""
     def edit(self, request, {param}{annotation}):
         return JsonResponse({{"action": "edit", "{param}": str({param})}})
 '''
-    store_request = "StoreRequest" if requests else "request"
-    update_request = "UpdateRequest" if requests else "request"
+    store_request = "request: StoreRequest" if requests else "request"
+    update_request = "request: UpdateRequest" if requests else "request"
     return f'''from django.http import JsonResponse
 from larajango.controllers import Controller
 {model_import}{request_import}

@@ -7,6 +7,7 @@ from django.core.exceptions import DisallowedHost
 from django.http import HttpResponse
 
 from larajango.http.request import larajango_request
+from larajango.responses import CookieJar
 
 
 class RequestConfig:
@@ -43,7 +44,21 @@ class RequestMiddleware:
         _verify_trusted_host(request)
         _normalize_input(request)
         larajango_request(request)
-        return self.get_response(request)
+        response = self.get_response(request)
+        CookieJar.attach(response)
+        return response
+
+
+class SetCacheHeaders:
+    def __init__(self, next_handler, directives: str):
+        self.next_handler = next_handler
+        self.directives = directives
+
+    def __call__(self, request, *args, **kwargs):
+        from larajango.responses import response
+
+        res = self.next_handler(request, *args, **kwargs)
+        return response(res).cache_headers(self.directives).to_response()
 
 
 class MethodOverrideMiddleware:

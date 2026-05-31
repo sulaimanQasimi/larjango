@@ -15,6 +15,7 @@ from django.urls import re_path
 
 from larajango.controllers import Middleware as ControllerMiddleware
 from larajango.http.request import Request as LarajangoRequest, larajango_request
+from larajango.responses import FluentResponse, response as make_response
 
 
 RESOURCE_ACTIONS = ("index", "create", "store", "show", "edit", "update", "destroy")
@@ -690,7 +691,7 @@ def _route_view(route: Route, router: Router):
             if route.missing_handler:
                 return route.missing_handler(request)
             raise
-        response = _call_action(action, request, args, bound_kwargs)
+        response = _normalize_response(_call_action(action, request, args, bound_kwargs))
         for middleware in reversed(terminable):
             middleware.terminate(request, response)
         return response
@@ -731,9 +732,41 @@ def _resolve_bindings(route: Route, action: Callable, kwargs: dict):
 def _call_action(action, request, args, kwargs):
     signature = inspect.signature(action)
     parameters = list(signature.parameters.values())
-    if parameters and parameters[0].annotation is LarajangoRequest:
-        return action(larajango_request(request), *args, **kwargs)
+    if parameters:
+        annotation = parameters[0].annotation
+        if annotation is LarajangoRequest:
+            return action(larajango_request(request), *args, **kwargs)
+        try:
+            from larajango.requests import FormRequest
+
+            if inspect.isclass(annotation) and issubclass(annotation, FormRequest):
+                form = annotation(request)
+                if not form.validate():
+                    return form.response()
+                if request.headers.get("Precognition"):
+                    from django.http import JsonResponse
+
+                    response = JsonResponse({}, status=204)
+                    response["Precognition-Success"] = "true"
+                    return response
+                request.validated = form.cleaned_data
+                request.form = form
+                return action(form, *args, **kwargs)
+        except TypeError:
+            pass
     return action(request, *args, **kwargs)
+
+
+def _normalize_response(value):
+    if isinstance(value, FluentResponse):
+        return value.to_response()
+    if hasattr(value, "status_code") and hasattr(value, "__setitem__"):
+        return value
+    if hasattr(value, "values") and callable(value.values):
+        value = list(value.values())
+    elif hasattr(value, "pk") and hasattr(value, "_meta"):
+        value = {field.name: getattr(value, field.name) for field in value._meta.fields}
+    return make_response(value).to_response()
 
 
 router = Router()

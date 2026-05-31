@@ -50,3 +50,11 @@ class RateLimiter(Facade):
 
 class Request(Facade):
     accessor = "request"
+
+
+class Response(Facade):
+    accessor = "response"
+
+
+class Cookie(Facade):
+    accessor = "cookie"
