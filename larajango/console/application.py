@@ -109,6 +109,9 @@ Usage:
   ./artisan key:generate
   ./artisan storage:link
   ./artisan make:controller NameController
+  ./artisan make:controller PhotoController --resource
+  ./artisan make:controller PhotoController --api
+  ./artisan make:controller ProvisionServer --invokable
   ./artisan make:model Name
   ./artisan make:middleware EnsureUserIsAdmin
   ./artisan make:middleware EnsureUserHasRole --parameters role
@@ -295,18 +298,25 @@ def make_controller(args: list[str]):
     parser = argparse.ArgumentParser(prog="./artisan make:controller")
     parser.add_argument("name")
     parser.add_argument("--resource", action="store_true")
+    parser.add_argument("--api", action="store_true")
+    parser.add_argument("--invokable", action="store_true")
+    parser.add_argument("--model", default="")
+    parser.add_argument("--requests", action="store_true")
     parsed = parser.parse_args(args)
     name = parsed.name
     class_name = name if name.endswith("Controller") else f"{name}Controller"
     path = ROOT / "app" / "Http" / "Controllers" / f"{class_name}.py"
-    if parsed.resource:
-        return create_file(path, resource_controller_stub(class_name))
+    if parsed.invokable:
+        return create_file(path, invokable_controller_stub(class_name))
+    if parsed.resource or parsed.api:
+        return create_file(path, resource_controller_stub(class_name, api=parsed.api, model=parsed.model, requests=parsed.requests))
     create_file(
         path,
-        f'''from larajango.inertia import inertia
+        f'''from larajango.controllers import Controller
+from larajango.inertia import inertia
 
 
-class {class_name}:
+class {class_name}(Controller):
     def index(request):
         return inertia(request, "{class_name.removesuffix("Controller")}/Index", {{}})
 ''',
@@ -502,31 +512,51 @@ def create_file(path: Path, content: str):
     print(f"Created {path}")
 
 
-def resource_controller_stub(class_name: str):
-    return f'''from django.http import JsonResponse
-
-
-class {class_name}:
-    def index(request):
-        return JsonResponse({{"action": "index"}})
-
-    def create(request):
+def resource_controller_stub(class_name: str, api: bool = False, model: str = "", requests: bool = False):
+    param = model[:1].lower() + model[1:] if model else "id"
+    annotation = f": {model}" if model else ""
+    model_import = f"from app.Models.{model} import {model}\n" if model else ""
+    request_import = "from app.Http.Requests.StoreRequest import StoreRequest\nfrom app.Http.Requests.UpdateRequest import UpdateRequest\n" if requests else ""
+    create_edit = "" if api else f'''
+    def create(self, request):
         return JsonResponse({{"action": "create"}})
 
-    def store(request):
+    def edit(self, request, {param}{annotation}):
+        return JsonResponse({{"action": "edit", "{param}": str({param})}})
+'''
+    store_request = "StoreRequest" if requests else "request"
+    update_request = "UpdateRequest" if requests else "request"
+    return f'''from django.http import JsonResponse
+from larajango.controllers import Controller
+{model_import}{request_import}
+
+class {class_name}(Controller):
+    def index(self, request):
+        return JsonResponse({{"action": "index"}})
+
+    def store(self, {store_request}):
         return JsonResponse({{"action": "store"}})
 
-    def show(request, id):
-        return JsonResponse({{"action": "show", "id": id}})
+    def show(self, request, {param}{annotation}):
+        return JsonResponse({{"action": "show", "{param}": str({param})}})
+{create_edit}
 
-    def edit(request, id):
-        return JsonResponse({{"action": "edit", "id": id}})
+    def update(self, {update_request}, {param}{annotation}):
+        return JsonResponse({{"action": "update", "{param}": str({param})}})
 
-    def update(request, id):
-        return JsonResponse({{"action": "update", "id": id}})
+    def destroy(self, request, {param}{annotation}):
+        return JsonResponse({{"action": "destroy", "{param}": str({param})}})
+'''
 
-    def destroy(request, id):
-        return JsonResponse({{"action": "destroy", "id": id}})
+
+def invokable_controller_stub(class_name: str):
+    return f'''from django.http import JsonResponse
+from larajango.controllers import Controller
+
+
+class {class_name}(Controller):
+    def __call__(self, request):
+        return JsonResponse({{"action": "{class_name}"}})
 '''
 
 

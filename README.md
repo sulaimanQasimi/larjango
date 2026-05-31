@@ -307,6 +307,86 @@ with router.group(middleware=["throttle:uploads"]):
 
 CORS `OPTIONS` responses are handled by `larajango.middleware.CorsMiddleware`; configure defaults in `config/cors.py` or `.env`.
 
+## Controllers
+
+Controllers live in `app/Http/Controllers` and may extend `larajango.controllers.Controller`:
+
+```python
+from django.http import JsonResponse
+from larajango.controllers import Controller, Middleware
+
+
+class UserController(Controller):
+    controller_middleware = (
+        Middleware("auth", only=("index", "show")),
+        Middleware("throttle:api", except_=("index",)),
+    )
+
+    def index(self, request):
+        return JsonResponse({"users": []})
+
+    def show(self, request, user):
+        return JsonResponse({"user": str(user)})
+```
+
+Register controller actions with tuple syntax, controller groups, or invokable controllers:
+
+```python
+router.get("/users", (UserController, "index")).named("users.index")
+
+router.controller(UserController).prefix("users").name("users.").group(lambda: (
+    router.get("/", "index", name="index"),
+    router.get("/{user}", "show", name="show"),
+))
+
+router.get("/server", ProvisionServerController)
+```
+
+Generate controllers:
+
+```bash
+./artisan make:controller UserController
+./artisan make:controller PhotoController --resource
+./artisan make:controller PhotoController --api
+./artisan make:controller PhotoController --resource --model Photo
+./artisan make:controller PhotoController --resource --requests
+./artisan make:controller ProvisionServer --invokable
+```
+
+Resource controllers follow Laravel's action names:
+
+```python
+router.resource("photos", PhotoController)
+router.api_resource("photos", PhotoController)
+router.resources({
+    "photos": PhotoController,
+    "posts": PostController,
+})
+```
+
+Resource registrations can be customized:
+
+```python
+router.resource("photos", PhotoController).only(("index", "show"))
+router.resource("photos", PhotoController).except_(("destroy",))
+router.resource("photos", PhotoController).middleware("auth")
+router.resource("photos", PhotoController).middleware_for(("show",), "auth")
+router.resource("photos", PhotoController).without_middleware_for(("index",), "auth")
+router.resource("photos", PhotoController).names({"create": "photos.build"})
+router.resource("photos", PhotoController).parameters({"photos": "image"})
+router.resource("photos", PhotoController).missing(lambda request: redirect_to("photos.index"))
+router.resource("photos.comments", CommentController).shallow()
+router.resource("photos.comments", CommentController).scoped({"comment": "slug"})
+```
+
+Singleton controllers are available for resources that have one instance:
+
+```python
+router.singleton("profile", ProfileController)
+router.singleton("profile", ProfileController).creatable().destroyable()
+router.api_singleton("profile", ProfileController)
+```
+
 ## CSRF Protection
 
 Larajango uses Django's CSRF engine with Laravel-style configuration and SPA conveniences, following Laravel 13's CSRF model.

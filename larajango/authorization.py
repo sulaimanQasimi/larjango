@@ -44,3 +44,15 @@ class Gate:
             if model is registered_model or issubclass(model, registered_model):
                 return policy
         return None
+
+
+class CanMiddleware:
+    def __init__(self, next_handler, ability: str, *parameters: str):
+        self.next_handler = next_handler
+        self.ability = ability
+        self.parameters = parameters
+
+    def __call__(self, request, *args, **kwargs):
+        values = [kwargs.get(parameter, parameter) for parameter in self.parameters]
+        Gate.authorize(self.ability, request.user, *values)
+        return self.next_handler(request, *args, **kwargs)

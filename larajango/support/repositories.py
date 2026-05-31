@@ -8,6 +8,7 @@ from larajango.queue import dispatch
 from larajango.rate_limiting import RateLimiter
 from larajango.routing import router
 from larajango.storage import disk
+from larajango.http.request import larajango_request
 
 
 class ConfigRepository:
@@ -47,6 +48,11 @@ class QueueDispatcher:
         return dispatch(job)
 
 
+class RequestFactory:
+    def from_django(self, request):
+        return larajango_request(request)
+
+
 def register_default_bindings(container):
     container.instance("router", router)
     container.singleton("config", ConfigRepository)
@@ -55,3 +61,4 @@ def register_default_bindings(container):
     container.instance("gate", Gate)
     container.singleton("queue", QueueDispatcher)
     container.instance("rate_limiter", RateLimiter)
+    container.singleton("request", RequestFactory)

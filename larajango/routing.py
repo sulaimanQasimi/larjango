@@ -13,6 +13,12 @@ from django.http import Http404, HttpResponseNotAllowed, HttpResponseRedirect
 from django.shortcuts import render
 from django.urls import re_path
 
+from larajango.controllers import Middleware as ControllerMiddleware
+from larajango.http.request import Request as LarajangoRequest, larajango_request
+
+
+RESOURCE_ACTIONS = ("index", "create", "store", "show", "edit", "update", "destroy")
+
 
 @dataclass
 class Route:
@@ -29,6 +35,7 @@ class Route:
     bindings: dict[str, tuple[type, str]] = field(default_factory=dict)
     binders: dict[str, Callable] = field(default_factory=dict)
     excluded_middleware: tuple[str | Callable, ...] = ()
+    action_name: str | None = None
 
     def named(self, name: str):
         self.name = name
@@ -194,6 +201,7 @@ class Router:
         self.patterns: dict[str, str] = {}
         self.model_bindings: dict[str, tuple[type, str]] = {}
         self.explicit_binders: dict[str, Callable] = {}
+        self.resource_verbs_map = {"create": "create", "edit": "edit"}
         self._groups: list[dict] = []
         self._fallback: Route | None = None
 
@@ -206,20 +214,23 @@ class Router:
         middleware: Iterable[str | Callable] | None = None,
     ):
         verbs = (methods,) if isinstance(methods, str) else tuple(methods)
+        resolved_action, action_name, controller = self._normalize_action(action)
         route = Route(
             tuple(verb.upper() for verb in verbs),
             self._prefix_uri(uri),
-            self._resolve_group_action(action),
+            resolved_action,
             self._prefix_name(name),
             self._merge_middleware(middleware or ()),
             self._merge_constraints(),
             self._current_domain(),
-            self._current_controller(),
+            controller or self._current_controller(),
             scoped_bindings=self._current_scoped_bindings(),
             bindings=dict(self.model_bindings),
             binders=dict(self.explicit_binders),
             excluded_middleware=self._merge_without_middleware(),
+            action_name=action_name,
         )
+        route.middleware_stack = (*route.middleware_stack, *_controller_middleware(route.controller, route.action_name))
         self.routes.append(route)
         return route
 
@@ -268,26 +279,25 @@ class Router:
         return self._fallback
 
     def resource(self, name: str, controller: type, names: str | None = None):
-        base = "/" + name.strip("/")
-        route_name = names or name.strip("/").replace("/", ".")
-        self.get(base, controller.index, name=f"{route_name}.index")
-        self.get(f"{base}/create", controller.create, name=f"{route_name}.create")
-        self.post(base, controller.store, name=f"{route_name}.store")
-        self.get(f"{base}/{{id}}", controller.show, name=f"{route_name}.show")
-        self.get(f"{base}/{{id}}/edit", controller.edit, name=f"{route_name}.edit")
-        self.put(f"{base}/{{id}}", controller.update, name=f"{route_name}.update")
-        self.patch(f"{base}/{{id}}", controller.update, name=f"{route_name}.update")
-        self.delete(f"{base}/{{id}}", controller.destroy, name=f"{route_name}.destroy")
+        return ResourceRegistration(self, name, controller, names=names)
 
     def api_resource(self, name: str, controller: type, names: str | None = None):
-        base = "/" + name.strip("/")
-        route_name = names or name.strip("/").replace("/", ".")
-        self.get(base, controller.index, name=f"{route_name}.index")
-        self.post(base, controller.store, name=f"{route_name}.store")
-        self.get(f"{base}/{{id}}", controller.show, name=f"{route_name}.show")
-        self.put(f"{base}/{{id}}", controller.update, name=f"{route_name}.update")
-        self.patch(f"{base}/{{id}}", controller.update, name=f"{route_name}.update")
-        self.delete(f"{base}/{{id}}", controller.destroy, name=f"{route_name}.destroy")
+        return ResourceRegistration(self, name, controller, names=names, api=True)
+
+    def resources(self, resources: dict[str, type]):
+        return {name: self.resource(name, controller) for name, controller in resources.items()}
+
+    def api_resources(self, resources: dict[str, type]):
+        return {name: self.api_resource(name, controller) for name, controller in resources.items()}
+
+    def singleton(self, name: str, controller: type, names: str | None = None):
+        return SingletonResourceRegistration(self, name, controller, names=names)
+
+    def api_singleton(self, name: str, controller: type, names: str | None = None):
+        return SingletonResourceRegistration(self, name, controller, names=names, api=True)
+
+    def resource_verbs(self, verbs: dict[str, str]):
+        self.resource_verbs_map.update(verbs)
 
     def alias_middleware(self, name: str, middleware: str | Callable):
         self.middleware_aliases[name] = middleware
@@ -421,8 +431,21 @@ class Router:
     def _resolve_group_action(self, action):
         controller = self._current_controller()
         if isinstance(action, str) and controller:
-            return getattr(controller, action)
+            return _controller_action(controller, action)
         return action
+
+    def _normalize_action(self, action):
+        action = self._resolve_group_action(action)
+        if isinstance(action, (tuple, list)) and len(action) == 2:
+            controller, method = action
+            return _controller_action(controller, method), method, controller
+        if inspect.isclass(action):
+            instance = action()
+            return instance.__call__, "__call__", action
+        if callable(action):
+            controller = _controller_from_callable(action)
+            return action, getattr(action, "__name__", None), controller
+        return action, None, None
 
     def _resolve_middleware(self, middleware: str | Callable):
         name, parameters = _parse_middleware(middleware)
@@ -464,6 +487,172 @@ def _route_regex(route: Route):
     return regex + r"/?$"
 
 
+class ResourceRegistration:
+    def __init__(self, router: Router, name: str, controller: type, names: str | None = None, api: bool = False):
+        self.router = router
+        self.name = name
+        self.controller = controller
+        self.route_name = names or name.replace("/", ".").replace(".", ".")
+        self.api = api
+        self.routes: dict[str, list[Route]] = {}
+        self._register()
+
+    def only(self, actions: Iterable[str]):
+        keep = set(actions)
+        self._remove(lambda action: action not in keep)
+        return self
+
+    def except_(self, actions: Iterable[str]):
+        blocked = set(actions)
+        self._remove(lambda action: action in blocked)
+        return self
+
+    def exceptActions(self, actions: Iterable[str]):
+        return self.except_(actions)
+
+    def middleware(self, middleware):
+        for route in self._all_routes():
+            route.with_middleware(middleware)
+        return self
+
+    def middleware_for(self, actions, middleware):
+        for action in _action_tuple(actions):
+            for route in self.routes.get(action, ()):
+                route.with_middleware(middleware)
+        return self
+
+    def middlewareFor(self, actions, middleware):
+        return self.middleware_for(actions, middleware)
+
+    def without_middleware_for(self, actions, middleware):
+        for action in _action_tuple(actions):
+            for route in self.routes.get(action, ()):
+                route.without_middleware(middleware)
+        return self
+
+    def withoutMiddlewareFor(self, actions, middleware):
+        return self.without_middleware_for(actions, middleware)
+
+    def missing(self, handler):
+        for route in self._all_routes():
+            route.missing(handler)
+        return self
+
+    def names(self, names: dict[str, str]):
+        for action, name in names.items():
+            for route in self.routes.get(action, ()):
+                route.name = name
+        return self
+
+    def parameters(self, parameters: dict[str, str]):
+        for resource, parameter in parameters.items():
+            default = _singular(resource.split(".")[-1])
+            for route in self._all_routes():
+                route.uri = route.uri.replace("{" + default + "}", "{" + parameter + "}")
+        return self
+
+    def scoped(self, fields: dict[str, str]):
+        for parameter, field_name in fields.items():
+            for route in self._all_routes():
+                route.uri = route.uri.replace("{" + parameter + "}", "{" + parameter + ":" + field_name + "}")
+        return self
+
+    def shallow(self):
+        if "." not in self.name:
+            return self
+        child = self.name.split(".")[-1]
+        child_base = "/" + child
+        child_param = _singular(child)
+        shallow_name = child
+        replacements = {
+            "show": child_base + "/{" + child_param + "}",
+            "edit": child_base + "/{" + child_param + "}/" + self.router.resource_verbs_map["edit"],
+            "update": child_base + "/{" + child_param + "}",
+            "destroy": child_base + "/{" + child_param + "}",
+        }
+        for action, uri in replacements.items():
+            for route in self.routes.get(action, ()):
+                route.uri = uri
+                route.name = f"{shallow_name}.{action}"
+        return self
+
+    def with_trashed(self, actions=("show", "edit", "update")):
+        for action in actions:
+            for route in self.routes.get(action, ()):
+                route.allow_trashed = True
+        return self
+
+    def withTrashed(self, actions=("show", "edit", "update")):
+        return self.with_trashed(actions)
+
+    def _register(self):
+        base, param = _resource_uri(self.name)
+        route_name = self.name.replace("/", ".")
+        create = self.router.resource_verbs_map["create"]
+        edit = self.router.resource_verbs_map["edit"]
+        self._add("index", self.router.get(base, (self.controller, "index"), name=f"{route_name}.index"))
+        if not self.api:
+            self._add("create", self.router.get(f"{base}/{create}", (self.controller, "create"), name=f"{route_name}.create"))
+        self._add("store", self.router.post(base, (self.controller, "store"), name=f"{route_name}.store"))
+        self._add("show", self.router.get(f"{base}/{{{param}}}", (self.controller, "show"), name=f"{route_name}.show"))
+        if not self.api:
+            self._add("edit", self.router.get(f"{base}/{{{param}}}/{edit}", (self.controller, "edit"), name=f"{route_name}.edit"))
+        self._add("update", self.router.put(f"{base}/{{{param}}}", (self.controller, "update"), name=f"{route_name}.update"))
+        self._add("update", self.router.patch(f"{base}/{{{param}}}", (self.controller, "update"), name=f"{route_name}.update"))
+        self._add("destroy", self.router.delete(f"{base}/{{{param}}}", (self.controller, "destroy"), name=f"{route_name}.destroy"))
+
+    def _add(self, action, route):
+        self.routes.setdefault(action, []).append(route)
+
+    def _all_routes(self):
+        for routes in self.routes.values():
+            yield from routes
+
+    def _remove(self, predicate):
+        for action, routes in list(self.routes.items()):
+            if predicate(action):
+                for route in routes:
+                    if route in self.router.routes:
+                        self.router.routes.remove(route)
+                self.routes.pop(action, None)
+
+
+class SingletonResourceRegistration(ResourceRegistration):
+    def __init__(self, router: Router, name: str, controller: type, names: str | None = None, api: bool = False):
+        self.creatable_enabled = False
+        self.destroyable_enabled = False
+        super().__init__(router, name, controller, names=names, api=api)
+
+    def creatable(self):
+        if not self.creatable_enabled:
+            base, _ = _resource_uri(self.name, singleton=True)
+            route_name = self.name.replace("/", ".")
+            create = self.router.resource_verbs_map["create"]
+            self._add("create", self.router.get(f"{base}/{create}", (self.controller, "create"), name=f"{route_name}.create"))
+            self._add("store", self.router.post(base, (self.controller, "store"), name=f"{route_name}.store"))
+            self.destroyable()
+            self.creatable_enabled = True
+        return self
+
+    def destroyable(self):
+        if not self.destroyable_enabled:
+            base, _ = _resource_uri(self.name, singleton=True)
+            route_name = self.name.replace("/", ".")
+            self._add("destroy", self.router.delete(base, (self.controller, "destroy"), name=f"{route_name}.destroy"))
+            self.destroyable_enabled = True
+        return self
+
+    def _register(self):
+        base, _ = _resource_uri(self.name, singleton=True)
+        route_name = self.name.replace("/", ".")
+        edit = self.router.resource_verbs_map["edit"]
+        self._add("show", self.router.get(base, (self.controller, "show"), name=f"{route_name}.show"))
+        if not self.api:
+            self._add("edit", self.router.get(f"{base}/{edit}", (self.controller, "edit"), name=f"{route_name}.edit"))
+        self._add("update", self.router.put(base, (self.controller, "update"), name=f"{route_name}.update"))
+        self._add("update", self.router.patch(base, (self.controller, "update"), name=f"{route_name}.update"))
+
+
 def _domain_regex(domain: str):
     escaped = re.escape(domain)
     escaped = re.sub(r"\\\{([A-Za-z_][A-Za-z0-9_]*)\\\}", r"(?P<\1>[^.]+)", escaped)
@@ -501,7 +690,7 @@ def _route_view(route: Route, router: Router):
             if route.missing_handler:
                 return route.missing_handler(request)
             raise
-        response = action(request, *args, **bound_kwargs)
+        response = _call_action(action, request, args, bound_kwargs)
         for middleware in reversed(terminable):
             middleware.terminate(request, response)
         return response
@@ -539,6 +728,14 @@ def _resolve_bindings(route: Route, action: Callable, kwargs: dict):
     return resolved
 
 
+def _call_action(action, request, args, kwargs):
+    signature = inspect.signature(action)
+    parameters = list(signature.parameters.values())
+    if parameters and parameters[0].annotation is LarajangoRequest:
+        return action(larajango_request(request), *args, **kwargs)
+    return action(request, *args, **kwargs)
+
+
 router = Router()
 
 
@@ -548,6 +745,81 @@ def _flatten_middleware(middleware):
             yield from _flatten_middleware(item)
         else:
             yield item
+
+
+def _controller_action(controller: type, method: str):
+    action = getattr(controller, method)
+    signature = inspect.signature(action)
+    parameters = list(signature.parameters)
+    if parameters and parameters[0] == "self":
+        return getattr(controller(), method)
+    return action
+
+
+def _controller_from_callable(action):
+    qualname = getattr(action, "__qualname__", "")
+    if "." not in qualname:
+        return None
+    module = import_module(action.__module__)
+    controller_name = qualname.split(".", 1)[0]
+    controller = getattr(module, controller_name, None)
+    return controller if inspect.isclass(controller) else None
+
+
+def _controller_middleware(controller, action_name):
+    if not controller or not action_name:
+        return ()
+    middleware = getattr(controller, "controller_middleware", ())
+    provider = controller.__dict__.get("middleware")
+    if provider is not None:
+        provider = getattr(controller, "middleware")
+        try:
+            middleware = (*middleware, *provider())
+        except TypeError:
+            pass
+    resolved = []
+    for item in middleware:
+        if isinstance(item, ControllerMiddleware):
+            if item.applies_to(action_name):
+                resolved.append(item.name)
+        elif callable(item) and not isinstance(item, str):
+            resolved.append(item)
+        else:
+            resolved.append(item)
+    method = getattr(controller, action_name, None)
+    for item in getattr(method, "controller_middleware", ()):
+        if isinstance(item, ControllerMiddleware):
+            if item.applies_to(action_name):
+                resolved.append(item.name)
+        else:
+            resolved.append(item)
+    return tuple(resolved)
+
+
+def _resource_uri(name: str, singleton: bool = False):
+    parts = name.split(".")
+    uri_parts = []
+    for index, part in enumerate(parts):
+        uri_parts.append(part)
+        if index < len(parts) - 1:
+            uri_parts.append("{" + _singular(part) + "}")
+    base = "/" + "/".join(uri_parts)
+    param = _singular(parts[-1])
+    return base, param
+
+
+def _singular(value: str):
+    if value.endswith("ies"):
+        return value[:-3] + "y"
+    if value.endswith("s"):
+        return value[:-1]
+    return value
+
+
+def _action_tuple(actions):
+    if isinstance(actions, str):
+        return (actions,)
+    return tuple(actions)
 
 
 def _middleware_tuple(value):

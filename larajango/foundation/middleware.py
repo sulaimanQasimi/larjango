@@ -63,6 +63,42 @@ class Middleware:
             xsrf_cookie=xsrf_cookie,
         )
 
+    def trim_strings(self, except_=()):
+        from larajango.middleware import configure_trim_strings
+
+        configure_trim_strings(except_=except_)
+        return self
+
+    def trimStrings(self, except_=()):
+        return self.trim_strings(except_=except_)
+
+    def convert_empty_strings_to_null(self, except_=()):
+        from larajango.middleware import configure_empty_strings
+
+        configure_empty_strings(except_=except_)
+        return self
+
+    def convertEmptyStringsToNull(self, except_=()):
+        return self.convert_empty_strings_to_null(except_=except_)
+
+    def trust_proxies(self, at=(), headers=()):
+        from larajango.middleware import configure_trusted_proxies
+
+        configure_trusted_proxies(at=at, headers=headers)
+        return self
+
+    def trustProxies(self, at=(), headers=()):
+        return self.trust_proxies(at=at, headers=headers)
+
+    def trust_hosts(self, at=(), subdomains: bool = True):
+        from larajango.middleware import configure_trusted_hosts
+
+        configure_trusted_hosts(at=at, subdomains=subdomains)
+        return self
+
+    def trustHosts(self, at=(), subdomains: bool = True):
+        return self.trust_hosts(at=at, subdomains=subdomains)
+
     def _patch_group(self, name, append, prepend, replace, remove):
         group = list(self.router.middleware_groups.get(name, ()))
         for old, new in replace.items():

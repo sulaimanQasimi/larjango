@@ -25,6 +25,7 @@ MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "larajango.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
+    "larajango.middleware.RequestMiddleware",
     "larajango.middleware.MethodOverrideMiddleware",
     "django.middleware.common.CommonMiddleware",
     "larajango.csrf.PreventRequestForgery",

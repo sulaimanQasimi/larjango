@@ -46,3 +46,7 @@ class Queue(Facade):
 
 class RateLimiter(Facade):
     accessor = "rate_limiter"
+
+
+class Request(Facade):
+    accessor = "request"
