@@ -313,22 +313,27 @@ class Request:
         return self.merge_if_missing(values)
 
     def flash(self):
-        self.request.session["_old_input"] = self.input()
+        self.session().flash("_old_input", self.input())
 
     def flash_only(self, keys):
-        self.request.session["_old_input"] = self.only(*_flatten_keys((keys,)))
+        self.session().flash("_old_input", self.only(*_flatten_keys((keys,))))
 
     def flashOnly(self, keys):
         return self.flash_only(keys)
 
     def flash_except(self, keys):
-        self.request.session["_old_input"] = self.except_(*_flatten_keys((keys,)))
+        self.session().flash("_old_input", self.except_(*_flatten_keys((keys,))))
 
     def flashExcept(self, keys):
         return self.flash_except(keys)
 
     def old(self, key: str, default=None):
         return self.request.session.get("_old_input", {}).get(key, default)
+
+    def session(self):
+        from larajango.session import SessionStore
+
+        return SessionStore(self.request)
 
     def cookie(self, key: str, default=None):
         return self.request.COOKIES.get(key, default)

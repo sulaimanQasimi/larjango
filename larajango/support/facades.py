@@ -74,3 +74,7 @@ class Vite(Facade):
 
 class URL(Facade):
     accessor = "url"
+
+
+class Session(Facade):
+    accessor = "session"

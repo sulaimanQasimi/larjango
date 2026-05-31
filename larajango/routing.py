@@ -9,7 +9,7 @@ from importlib import import_module
 from typing import Callable, Iterable
 
 from django.core.exceptions import ObjectDoesNotExist
-from django.http import Http404, HttpResponseNotAllowed, HttpResponseRedirect
+from django.http import Http404, HttpResponse, HttpResponseNotAllowed, HttpResponseRedirect
 from django.urls import re_path
 
 from larajango.controllers import Middleware as ControllerMiddleware
@@ -37,6 +37,8 @@ class Route:
     binders: dict[str, Callable] = field(default_factory=dict)
     excluded_middleware: tuple[str | Callable, ...] = ()
     action_name: str | None = None
+    block_lock_seconds: int | None = None
+    block_wait_seconds: int | None = None
 
     def named(self, name: str):
         self.name = name
@@ -106,6 +108,11 @@ class Route:
 
     def without_scoped_bindings(self):
         self.scoped_bindings = False
+        return self
+
+    def block(self, lock_seconds: int = 10, wait_seconds: int = 10):
+        self.block_lock_seconds = lock_seconds
+        self.block_wait_seconds = wait_seconds
         return self
 
 
@@ -691,7 +698,15 @@ def _route_view(route: Route, router: Router):
             if route.missing_handler:
                 return route.missing_handler(request)
             raise
-        response = _normalize_response(_call_action(action, request, args, bound_kwargs), request)
+        if route.block_lock_seconds is not None:
+            from larajango.session import session_lock
+
+            with session_lock(request, route.block_lock_seconds, route.block_wait_seconds or 10) as acquired:
+                if not acquired:
+                    return HttpResponse("Session lock timeout.", status=423)
+                response = _normalize_response(_call_action(action, request, args, bound_kwargs), request)
+        else:
+            response = _normalize_response(_call_action(action, request, args, bound_kwargs), request)
         for middleware in reversed(terminable):
             middleware.terminate(request, response)
         return response

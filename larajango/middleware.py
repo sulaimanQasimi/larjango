@@ -8,6 +8,7 @@ from django.http import HttpResponse
 
 from larajango.http.request import larajango_request
 from larajango.responses import CookieJar
+from larajango.session import Session, SessionStore
 from larajango.urls import URL
 
 
@@ -45,8 +46,11 @@ class RequestMiddleware:
         _verify_trusted_host(request)
         _normalize_input(request)
         URL.set_request(request)
+        Session.set_request(request)
+        SessionStore.start_request(request)
         larajango_request(request)
         response = self.get_response(request)
+        SessionStore.end_request(request)
         CookieJar.attach(response)
         return response
 

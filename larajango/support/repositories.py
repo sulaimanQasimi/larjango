@@ -10,6 +10,7 @@ from larajango.queue import dispatch
 from larajango.rate_limiting import RateLimiter
 from larajango.responses import CookieJar, ResponseFactory
 from larajango.routing import router
+from larajango.session import Session
 from larajango.storage import disk
 from larajango.http.request import larajango_request
 from larajango.urls import URL
@@ -73,3 +74,4 @@ def register_default_bindings(container):
     container.instance("blade", Blade)
     container.instance("vite", Vite)
     container.instance("url", URL)
+    container.instance("session", Session)

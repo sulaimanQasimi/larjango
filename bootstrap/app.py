@@ -14,6 +14,7 @@ middleware.alias(
         "role": "app.Http.Middleware.EnsureUserHasRole.EnsureUserHasRole",
         "permission": "app.Http.Middleware.EnsureUserHasPermission.EnsureUserHasPermission",
         "signed": "larajango.urls.ValidateSignature",
+        "session.block": "larajango.session.BlockSession",
         "throttle": "larajango.rate_limiting.ThrottleRequests",
     }
 )

@@ -761,6 +761,88 @@ Blade.directive("datetime", lambda expression: "{{ " + expression + " }}")
 Blade.without_double_encoding()
 ```
 
+## Session
+
+Larajango uses Django's configured session backend with Laravel-style helpers on top. Configure the backend in `.env` or `config/session.py`:
+
+```env
+SESSION_DRIVER=database
+SESSION_LIFETIME=120
+SESSION_COOKIE=larajango_session
+```
+
+Read and write session data from the request wrapper, helper, or facade:
+
+```python
+from larajango.session import session
+from larajango.support import Session
+
+request.larajango.session().put("cart.items", [1, 2])
+items = request.larajango.session().get("cart.items", [])
+
+session({"status": "Saved"})
+status = session("status")
+
+Session.put("user.name", "Taylor")
+name = Session.get("user.name")
+```
+
+The session store supports Laravel-style operations:
+
+```python
+store = request.larajango.session()
+
+store.all()
+store.only(["username", "email"])
+store.except_(["password"])
+store.exists("cart")
+store.has("cart.items")
+store.missing("checkout")
+store.push("cart.items", product_id)
+store.pull("status", "missing")
+store.increment("counter")
+store.decrement("counter")
+store.forget(["cart.items"])
+store.flush()
+store.regenerate()
+store.invalidate()
+```
+
+Flash data is available for the next request and then removed:
+
+```python
+store.flash("status", "Profile updated.")
+store.now("warning", "Only for this response.")
+store.reflash()
+store.keep(["status"])
+
+request.larajango.flash()
+request.larajango.flash_only(["username", "email"])
+request.larajango.flash_except(["password"])
+request.larajango.old("username")
+```
+
+Responses use the same flash store:
+
+```python
+return redirect_to("/profile").with_(request, "status", "Saved.")
+return back(request).with_input(request)
+```
+
+Use the session-scoped cache for data that should be isolated to one browser session:
+
+```python
+request.larajango.session().cache().put("discount", 10, 300)
+discount = request.larajango.session().cache().remember("discount", 300, lambda: 10)
+```
+
+Block concurrent requests for the same session on sensitive routes:
+
+```python
+router.post("/profile", ProfileController.update).block(lock_seconds=10, wait_seconds=10)
+router.post("/checkout", CheckoutController.store).middleware("session.block:10,10")
+```
+
 ## URL And Responses
 
 Generate basic URLs, append query strings, and inspect the current request URL:

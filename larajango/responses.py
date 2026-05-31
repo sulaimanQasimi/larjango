@@ -58,17 +58,21 @@ class FluentResponse:
         return self
 
     def with_(self, request, key: str, value):
-        request.session[key] = value
-        request.session[f"_flash_{key}"] = True
+        from larajango.session import SessionStore
+
+        SessionStore(request).flash(key, value)
         return self
 
     def with_input(self, request, data: dict | None = None):
+        from larajango.session import SessionStore
+
+        store = SessionStore(request)
         if data is not None:
-            request.session["_old_input"] = data
+            store.flash("_old_input", data)
         elif hasattr(request, "larajango"):
-            request.session["_old_input"] = request.larajango.input()
+            store.flash("_old_input", request.larajango.input())
         else:
-            request.session["_old_input"] = {}
+            store.flash("_old_input", {})
         return self
 
     def cache_headers(self, directives: str):

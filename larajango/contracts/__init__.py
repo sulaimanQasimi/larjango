@@ -8,6 +8,7 @@ from larajango.contracts.http import FormRequestContract, RequestContract, Respo
 from larajango.contracts.queue import DispatcherContract
 from larajango.contracts.rate_limiting import RateLimiterContract
 from larajango.contracts.routing import RouteContract, RouterContract
+from larajango.contracts.session import SessionStoreContract
 from larajango.contracts.support import ServiceProviderContract
 from larajango.contracts.urls import UriContract, UrlGeneratorContract
 from larajango.contracts.views import ViewFactoryContract, ViewInstanceContract
@@ -25,6 +26,7 @@ __all__ = [
     "RequestContract",
     "RouteContract",
     "RouterContract",
+    "SessionStoreContract",
     "ServiceProviderContract",
     "UriContract",
     "UrlGeneratorContract",

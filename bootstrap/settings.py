@@ -5,6 +5,8 @@ from larajango.config import env, load_env
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_env(BASE_DIR / ".env")
 
+from config import session
+
 SECRET_KEY = env("APP_KEY", "larajango-dev-secret-key")
 DEBUG = env("APP_DEBUG", True)
 ALLOWED_HOSTS = [host for host in str(env("APP_HOSTS", "127.0.0.1,localhost,testserver")).split(",") if host]
@@ -93,3 +95,18 @@ CACHES = {
         "LOCATION": "larajango",
     }
 }
+
+SESSION_ENGINE = {
+    "database": "django.contrib.sessions.backends.db",
+    "cache": "django.contrib.sessions.backends.cache",
+    "file": "django.contrib.sessions.backends.file",
+    "cookie": "django.contrib.sessions.backends.signed_cookies",
+}.get(session.DRIVER, session.DRIVER)
+SESSION_COOKIE_AGE = session.LIFETIME * 60
+SESSION_EXPIRE_AT_BROWSER_CLOSE = session.EXPIRE_ON_CLOSE
+SESSION_COOKIE_NAME = session.COOKIE
+SESSION_COOKIE_PATH = session.PATH
+SESSION_COOKIE_DOMAIN = session.DOMAIN
+SESSION_COOKIE_SECURE = session.SECURE
+SESSION_COOKIE_HTTPONLY = session.HTTP_ONLY
+SESSION_COOKIE_SAMESITE = session.SAME_SITE
