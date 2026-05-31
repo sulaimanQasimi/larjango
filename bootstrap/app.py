@@ -9,6 +9,8 @@ middleware = Middleware(router)
 middleware.alias(
     {
         "auth": "app.Http.Middleware.Authenticate.Authenticate",
+        "role": "app.Http.Middleware.EnsureUserHasRole.EnsureUserHasRole",
+        "permission": "app.Http.Middleware.EnsureUserHasPermission.EnsureUserHasPermission",
         "throttle": "larajango.rate_limiting.ThrottleRequests",
     }
 )

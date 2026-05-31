@@ -6,4 +6,8 @@ class AppServiceProvider(ServiceProvider):
         pass
 
     def boot(self):
-        pass
+        from app.Models.User import User
+        from app.Policies.UserPolicy import UserPolicy
+        from larajango.authorization import Gate
+
+        Gate.policy(User, UserPolicy)

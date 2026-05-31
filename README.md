@@ -457,6 +457,31 @@ Expose public storage with:
 
 ## Authorization And Jobs
 
+Larajango ships with a custom `app.User` model from startup. It is configured as `AUTH_USER_MODEL`, migrated in `app/migrations/0001_initial.py`, and includes convenience helpers over Django's built-in groups and permissions:
+
+```python
+from app.Models import Permission, Role, User
+
+user = User.objects.create_user(username="taylor", password="secret")
+role = Role.find_or_create("admin")
+permission = Permission.find_or_create("publish_posts")
+
+role.give_permission_to(permission)
+user.assign_role("admin")
+user.give_permission_to("app.view_user")
+
+user.has_role("admin")
+user.can("app.view_user")
+user.can("view_user")
+```
+
+Protect routes with role or permission middleware:
+
+```python
+router.get("/admin", AdminController.index).middleware("role:admin")
+router.get("/reports", ReportController.index).middleware("permission:app.view_report")
+```
+
 Define gates:
 
 ```python
@@ -464,6 +489,17 @@ from larajango.authorization import Gate
 
 Gate.define("update-post", lambda user, post: post.user_id == user.id)
 Gate.authorize("update-post", request.user, post)
+```
+
+Policies may be registered in `app/Providers/AppServiceProvider.py`:
+
+```python
+from app.Models.User import User
+from app.Policies.UserPolicy import UserPolicy
+from larajango.authorization import Gate
+
+Gate.policy(User, UserPolicy)
+Gate.authorize("update", request.user, another_user)
 ```
 
 Dispatch synchronous jobs:
