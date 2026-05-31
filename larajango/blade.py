@@ -65,6 +65,7 @@ def compile_blade(source: str):
     source = _compile_comments(source)
     source = _compile_escaped_at(source)
     source = _compile_custom_directives(source)
+    source = _compile_vite(source)
     source = _compile_layouts(source)
     source = _compile_includes(source)
     source = _compile_forms(source)
@@ -120,6 +121,12 @@ def _compile_custom_directives(source: str):
         return str(Blade.custom_directives[name](expression))
 
     return re.sub(r"@(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*(?:\((?P<expression>.*?)\))?", replace, source)
+
+
+def _compile_vite(source: str):
+    source = re.sub(r"@viteReactRefresh\b", "{% load vite %}{% vite_react_preamble %}", source)
+    source = re.sub(r"@vite\s*\((.*?)\)", lambda m: "{% load vite %}{% vite " + _vite_entries(m.group(1)) + " %}", source)
+    return source
 
 
 def _compile_layouts(source: str):
@@ -240,6 +247,14 @@ def _restore_verbatim(source: str, blocks: list[str]):
 
 def _argument(value: str):
     return _literal(value.split(",", 1)[0])
+
+
+def _vite_entries(value: str):
+    value = value.strip()
+    if value.startswith("[") and value.endswith("]"):
+        items = re.findall(r"['\"]([^'\"]+)['\"]", value)
+        return " ".join(f'"{item}"' for item in items)
+    return f'"{_argument(value)}"'
 
 
 def _literal(value: str | None):

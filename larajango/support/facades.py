@@ -66,3 +66,7 @@ class View(Facade):
 
 class Blade(Facade):
     accessor = "blade"
+
+
+class Vite(Facade):
+    accessor = "vite"

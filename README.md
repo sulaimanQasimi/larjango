@@ -2,7 +2,7 @@
 
 Larajango is a Django starter shaped like Laravel 13: controllers in `app/Http/Controllers`, requests in `app/Http/Requests`, middleware in `app/Http/Middleware`, models in `app/Models`, route files in `routes`, config in `config`, an `artisan` command line, and Inertia-style pages in `resources/js/Pages`.
 
-Frontend assets are served with Vite through `django-vite`. In development, Django renders the Vite HMR client, React refresh preamble, and `resources/js/app.jsx` from the Vite dev server. In production, run `npm run build` so Django can read `public/build/manifest.json` and serve the compiled files from `/static/build/`.
+Frontend assets are served with Vite through Larajango's Laravel-style `Vite` helper. In development, Django renders the Vite HMR client, React refresh preamble, and `resources/js/app.jsx` from the Vite dev server. In production, run `npm run build` so Django can read `public/build/manifest.json` or `public/build/.vite/manifest.json` and serve the compiled files from `/static/build/`.
 
 ## Installation
 
@@ -73,6 +73,7 @@ The Python requirements include `django-vite` and `inertia-django`; install them
 ./artisan make:middleware LogAfterResponse --terminable
 ./artisan make:request StorePostRequest
 ./artisan make:view greeting
+./artisan make:view greeting --blade
 ./artisan make:seeder UserSeeder
 ./artisan make:policy PostPolicy
 ./artisan make:job SendWelcomeEmail
@@ -649,6 +650,52 @@ View composers run right before rendering; creators run as soon as the view inst
 ```bash
 ./artisan view:cache
 ./artisan view:clear
+```
+
+## Vite
+
+Use the `vite` template tag from `resources/views/app.html` or any Django view:
+
+```django
+{% load vite %}
+{% vite 'resources/js/app.jsx' %}
+```
+
+The tag emits the HMR client, React refresh preamble, and entrypoint script in development. After `npm run build`, it reads the Vite manifest and emits script, stylesheet, module preload, and optional prefetch tags.
+
+Use the facade from providers or bootstrap code to match Laravel's Vite customization flow:
+
+```python
+from larajango.support import Vite
+
+Vite.with_entrypoints(["resources/js/app.jsx", "resources/css/app.css"])
+Vite.use_build_directory("build")
+Vite.use_manifest_filename("manifest.json")
+Vite.use_hot_file("public/hot")
+Vite.use_csp_nonce("request-nonce")
+Vite.use_integrity_key("integrity")
+Vite.use_asset_prefetching("load")
+```
+
+Customize generated tags:
+
+```python
+Vite.use_script_tag_attributes({"data-turbo-track": "reload"})
+Vite.use_style_tag_attributes(lambda href, chunk: {"data-source": chunk.get("src", href)})
+```
+
+Generate URLs or read built asset contents:
+
+```python
+logo = Vite.asset("resources/images/logo.png")
+css = Vite.content("assets/app.css")
+```
+
+Blade templates can use Laravel-style Vite directives:
+
+```blade
+@viteReactRefresh
+@vite(['resources/js/app.jsx'])
 ```
 
 ## Blade Templates

@@ -5,10 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Larajango</title>
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
-    {% load django_vite %}
-    {% vite_hmr_client %}
-    {% vite_react_refresh %}
-    {% vite_asset 'resources/js/app.jsx' %}
+    {% load vite %}
+    {% vite 'resources/js/app.jsx' %}
   </head>
   <body>
     <div id="app" data-page='{{ page_json|escape }}'></div>
