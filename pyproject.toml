@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "larajango"
+name = "sulaimanqasimi-larjango"
 version = "0.1.0"
 description = "A Laravel-flavored Django starter with Inertia-style pages and artisan-like commands."
 readme = "README.md"
