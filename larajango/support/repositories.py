@@ -3,6 +3,7 @@ from __future__ import annotations
 from django.core.cache import cache as django_cache
 
 from larajango.authorization import Gate
+from larajango.blade import Blade
 from larajango.config import config, env
 from larajango.queue import dispatch
 from larajango.rate_limiting import RateLimiter
@@ -67,3 +68,4 @@ def register_default_bindings(container):
     container.singleton("response", ResponseFactory)
     container.instance("cookie", CookieJar)
     container.instance("view", View)
+    container.instance("blade", Blade)

@@ -62,3 +62,7 @@ class Cookie(Facade):
 
 class View(Facade):
     accessor = "view"
+
+
+class Blade(Facade):
+    accessor = "blade"

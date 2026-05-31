@@ -16,7 +16,7 @@ class ViewInstance:
     def __init__(self, factory, name: str, data: dict | None = None):
         self.factory = factory
         self.name = name
-        self.template = normalize_view_name(name)
+        self.template = resolve_view_name(name)
         self.data = {**factory.shared, **(data or {})}
         factory.run_creators(self)
 
@@ -32,6 +32,10 @@ class ViewInstance:
 
     def render(self, request=None):
         self.factory.run_composers(self)
+        if self.template.endswith(".blade.php"):
+            from larajango.blade import Blade
+
+            return Blade.render(self.template, self.data, request)
         content = render_to_string(self.template, self.data, request=request)
         return content
 
@@ -61,7 +65,7 @@ class ViewFactory:
 
     def exists(self, name: str):
         try:
-            get_template(normalize_view_name(name))
+            resolve_view_name(name)
             return True
         except TemplateDoesNotExist:
             return False
@@ -109,8 +113,32 @@ def normalize_view_name(name: str):
     return f"{name.replace('.', '/')}.html"
 
 
+def resolve_view_name(name: str):
+    for template in view_candidates(name):
+        if template.endswith(".blade.php"):
+            from larajango.blade import exists as blade_exists
+
+            if blade_exists(template):
+                return template
+            continue
+        try:
+            get_template(template)
+            return template
+        except TemplateDoesNotExist:
+            pass
+    raise TemplateDoesNotExist(name)
+
+
+def view_candidates(name: str):
+    normalized = normalize_view_name(name)
+    if normalized.endswith(".blade.php"):
+        return (normalized,)
+    blade = normalized.removesuffix(".html") + ".blade.php"
+    return (normalized, blade)
+
+
 def view_path(name: str):
-    return Path(settings.BASE_DIR) / "resources" / "views" / normalize_view_name(name)
+    return Path(settings.BASE_DIR) / "resources" / "views" / resolve_view_name(name)
 
 
 def _view_patterns(views):

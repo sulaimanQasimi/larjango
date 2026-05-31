@@ -1,3 +1,4 @@
+from larajango.contracts.blade import BladeFactoryContract
 from larajango.contracts.auth import GateContract
 from larajango.contracts.cache import CacheRepositoryContract
 from larajango.contracts.config import ConfigRepositoryContract
@@ -11,6 +12,7 @@ from larajango.contracts.views import ViewFactoryContract, ViewInstanceContract
 
 __all__ = [
     "CacheRepositoryContract",
+    "BladeFactoryContract",
     "ConfigRepositoryContract",
     "DispatcherContract",
     "FilesystemDiskContract",

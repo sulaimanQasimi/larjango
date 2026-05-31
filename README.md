@@ -651,6 +651,69 @@ View composers run right before rendering; creators run as soon as the view inst
 ./artisan view:clear
 ```
 
+## Blade Templates
+
+Larajango can render `.blade.php` files from `resources/views` through a Django-backed Blade compatibility layer:
+
+```bash
+./artisan make:view greeting --blade
+```
+
+```python
+from larajango.responses import view
+from larajango.support import Blade
+
+return view("greeting", {"name": "Finn"})
+
+html = Blade.render_string("Hello, {{ $name }}.", {"name": "Samantha"})
+```
+
+Supported Blade-style syntax includes escaped and raw output, escaped JavaScript braces, comments, verbatim blocks, conditionals, auth/guest checks, loops, includes, layouts, sections, stacks, CSRF and method fields:
+
+```blade
+{{-- resources/views/greeting.blade.php --}}
+@extends('layouts.app')
+
+@section('title')
+    Greeting
+@endsection
+
+@section('content')
+    @auth
+        Hello, {{ $name }}.
+    @endauth
+
+    @foreach ($users as $user)
+        <p>{{ $user.name }}</p>
+    @empty
+        <p>No users.</p>
+    @endforeach
+
+    <form method="POST">
+        @csrf
+        @method('PUT')
+    </form>
+@endsection
+```
+
+Layouts and stacks map to Django blocks:
+
+```blade
+{{-- resources/views/layouts/app.blade.php --}}
+<title>@yield('title', 'Larajango')</title>
+@stack('scripts')
+<main>@yield('content')</main>
+```
+
+Register simple custom directives from a service provider:
+
+```python
+from larajango.support import Blade
+
+Blade.directive("datetime", lambda expression: "{{ " + expression + " }}")
+Blade.without_double_encoding()
+```
+
 ## URL And Responses
 
 Generate URLs from route names:

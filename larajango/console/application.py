@@ -126,6 +126,7 @@ Usage:
   ./artisan make:middleware LogAfterResponse --terminable
   ./artisan make:request StorePostRequest
   ./artisan make:view greeting
+  ./artisan make:view greeting --blade
   ./artisan make:seeder UserSeeder
   ./artisan make:policy PostPolicy
   ./artisan make:job SendWelcomeEmail
@@ -219,18 +220,22 @@ def route_clear():
 def view_cache():
     import django
     from django.template.loader import get_template
+    from larajango.blade import compile_blade
 
     django.setup()
     views_root = ROOT / "resources" / "views"
     cache_path = ROOT / "bootstrap" / "cache" / "views.json"
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     payload = []
-    for path in sorted(views_root.rglob("*.html")):
+    for path in sorted([*views_root.rglob("*.html"), *views_root.rglob("*.blade.php")]):
         template = path.relative_to(views_root).as_posix()
-        get_template(template)
+        if template.endswith(".blade.php"):
+            compile_blade(path.read_text(encoding="utf-8"))
+        else:
+            get_template(template)
         payload.append(
             {
-                "name": template.removesuffix(".html").replace("/", "."),
+                "name": template.removesuffix(".html").removesuffix(".blade.php").replace("/", "."),
                 "template": template,
                 "mtime": path.stat().st_mtime,
             }
@@ -438,8 +443,15 @@ class {name}(FormRequest):
 def make_view(args: list[str]):
     from larajango.views import normalize_view_name
 
-    name = require_name(args, "view name")
-    path = ROOT / "resources" / "views" / normalize_view_name(name)
+    parser = argparse.ArgumentParser(prog="./artisan make:view")
+    parser.add_argument("name")
+    parser.add_argument("--blade", action="store_true")
+    parsed = parser.parse_args(args)
+    name = parsed.name
+    template = normalize_view_name(name)
+    if parsed.blade and not template.endswith(".blade.php"):
+        template = template.removesuffix(".html") + ".blade.php"
+    path = ROOT / "resources" / "views" / template
     title = Path(name).stem.replace("_", " ").replace("-", " ").title() or "View"
     create_file(
         path,
