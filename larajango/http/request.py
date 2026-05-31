@@ -69,6 +69,28 @@ class Request:
     def fullUrlWithoutQuery(self, keys):
         return self.full_url_without_query(keys)
 
+    def uri(self):
+        from larajango.urls import Uri
+
+        return Uri.of(self.full_url())
+
+    def has_valid_signature(self, absolute: bool = True):
+        from larajango.urls import URL
+
+        return URL.has_valid_signature(self.request, absolute=absolute)
+
+    def hasValidSignature(self, absolute: bool = True):
+        return self.has_valid_signature(absolute)
+
+    def has_valid_signature_while_ignoring(self, ignore, absolute: bool = True):
+        from larajango.urls import URL
+
+        ignore = (ignore,) if isinstance(ignore, str) else tuple(ignore)
+        return URL.has_valid_signature(self.request, absolute=absolute, ignore=ignore)
+
+    def hasValidSignatureWhileIgnoring(self, ignore, absolute: bool = True):
+        return self.has_valid_signature_while_ignoring(ignore, absolute)
+
     def host(self):
         return self.request.get_host().split(":", 1)[0]
 

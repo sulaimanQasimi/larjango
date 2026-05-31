@@ -8,6 +8,7 @@ load_env(BASE_DIR / ".env")
 SECRET_KEY = env("APP_KEY", "larajango-dev-secret-key")
 DEBUG = env("APP_DEBUG", True)
 ALLOWED_HOSTS = [host for host in str(env("APP_HOSTS", "127.0.0.1,localhost,testserver")).split(",") if host]
+APP_URL = env("APP_URL", "http://localhost")
 
 INSTALLED_APPS = [
     "django_vite",

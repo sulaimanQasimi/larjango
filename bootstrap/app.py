@@ -13,6 +13,7 @@ middleware.alias(
         "cache.headers": "larajango.middleware.SetCacheHeaders",
         "role": "app.Http.Middleware.EnsureUserHasRole.EnsureUserHasRole",
         "permission": "app.Http.Middleware.EnsureUserHasPermission.EnsureUserHasPermission",
+        "signed": "larajango.urls.ValidateSignature",
         "throttle": "larajango.rate_limiting.ThrottleRequests",
     }
 )

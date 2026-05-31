@@ -763,13 +763,66 @@ Blade.without_double_encoding()
 
 ## URL And Responses
 
-Generate URLs from route names:
+Generate basic URLs, append query strings, and inspect the current request URL:
 
 ```python
-from larajango.urls import route
+from larajango.urls import URL, url
+
+posts = url("/posts/1")
+filtered = url().query("/posts?sort=latest", {"search": "Laravel", "columns": ["title", "body"]})
+current = URL.current()
+full = URL.full()
+previous = URL.previous()
+previous_path = URL.previousPath()
+```
+
+Generate URLs from route names. Route parameters fill URI placeholders, and extra values become query string parameters:
+
+```python
+from larajango.urls import Uri, action, route, signed_route, temporary_signed_route
 
 home_url = route("home")
 api_url = route("api.health")
+post_url = route("post.show", {"post": post, "search": "rocket"})
+controller_url = action((UserController, "profile"), {"id": 1})
+signed = signed_route("unsubscribe", {"user": 1})
+temporary = temporary_signed_route("unsubscribe", 1800, {"user": 1})
+```
+
+Signed routes can be protected with middleware:
+
+```python
+router.get("/unsubscribe/{user}", UnsubscribeController.show, name="unsubscribe").middleware("signed")
+router.get("/preview/{id}", PreviewController.show, name="preview").middleware("signed:relative")
+```
+
+Requests expose signature helpers:
+
+```python
+request.larajango.has_valid_signature()
+request.larajango.has_valid_signature_while_ignoring(["page", "order"])
+```
+
+Set default route parameters, such as a locale, from middleware or a provider:
+
+```python
+from larajango.support import URL
+
+URL.defaults({"locale": "en"})
+```
+
+Use fluent URI objects when you want chainable URL manipulation:
+
+```python
+uri = (
+    Uri.of("https://example.com")
+    .with_scheme("http")
+    .with_host("test.com")
+    .with_port(8000)
+    .with_path("/users")
+    .with_query({"page": 2})
+    .with_fragment("section-1")
+)
 ```
 
 Return common response types:

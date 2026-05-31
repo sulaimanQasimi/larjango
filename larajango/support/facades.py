@@ -70,3 +70,7 @@ class Blade(Facade):
 
 class Vite(Facade):
     accessor = "vite"
+
+
+class URL(Facade):
+    accessor = "url"
