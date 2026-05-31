@@ -4,6 +4,28 @@ Larajango is a Django starter shaped like Laravel 13: controllers in `app/Http/C
 
 Frontend assets are served with Vite through `django-vite`. In development, Django renders the Vite HMR client, React refresh preamble, and `resources/js/app.jsx` from the Vite dev server. In production, run `npm run build` so Django can read `public/build/manifest.json` and serve the compiled files from `/static/build/`.
 
+## Installation
+
+Clone the repository:
+
+```bash
+git clone https://github.com/SulaimanQasimi/larjango.git
+cd larjango
+```
+
+Then install dependencies and start the development server:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+npm install
+./artisan migrate
+./artisan dev
+```
+
+Open `http://127.0.0.1:8000`.
+
 ## Quick Start
 
 ```bash
@@ -425,98 +447,4 @@ from larajango.responses import back, json, redirect_to, response, view
 return json({"ok": True})
 return redirect_to("home")
 return back(request)
-```
-
-## Session
-
-Flash data and retrieve old form input:
-
-```python
-from larajango.session import flash, flash_input, flashed, old
-
-flash(request, "status", "Saved.")
-message = flashed(request, "status")
-```
-
-## Storage
-
-Use local disks similar to Laravel's storage facade:
-
-```python
-from larajango.storage import disk
-
-disk("public").put("avatars/user.txt", "stored")
-content = disk("public").get("avatars/user.txt")
-```
-
-Expose public storage with:
-
-```bash
-./artisan storage:link
-```
-
-## Authorization And Jobs
-
-Larajango ships with a custom `app.User` model from startup. It is configured as `AUTH_USER_MODEL`, migrated in `app/migrations/0001_initial.py`, and includes convenience helpers over Django's built-in groups and permissions:
-
-```python
-from app.Models import Permission, Role, User
-
-user = User.objects.create_user(username="taylor", password="secret")
-role = Role.find_or_create("admin")
-permission = Permission.find_or_create("publish_posts")
-
-role.give_permission_to(permission)
-user.assign_role("admin")
-user.give_permission_to("app.view_user")
-
-user.has_role("admin")
-user.can("app.view_user")
-user.can("view_user")
-```
-
-Protect routes with role or permission middleware:
-
-```python
-router.get("/admin", AdminController.index).middleware("role:admin")
-router.get("/reports", ReportController.index).middleware("permission:app.view_report")
-```
-
-Define gates:
-
-```python
-from larajango.authorization import Gate
-
-Gate.define("update-post", lambda user, post: post.user_id == user.id)
-Gate.authorize("update-post", request.user, post)
-```
-
-Policies may be registered in `app/Providers/AppServiceProvider.py`:
-
-```python
-from app.Models.User import User
-from app.Policies.UserPolicy import UserPolicy
-from larajango.authorization import Gate
-
-Gate.policy(User, UserPolicy)
-Gate.authorize("update", request.user, another_user)
-```
-
-Dispatch synchronous jobs:
-
-```python
-from app.Jobs.SendWelcomeEmail import SendWelcomeEmail
-from larajango.queue import dispatch
-
-dispatch(SendWelcomeEmail())
-```
-
-## Pagination And Cache
-
-```python
-from larajango.cache import remember
-from larajango.pagination import paginate
-
-posts = paginate(request, Post.objects.all(), per_page=10)
-stats = remember("stats", 60, lambda: calculate_stats())
 ```
