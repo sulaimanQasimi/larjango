@@ -11,6 +11,7 @@ from larajango.contracts.routing import RouteContract, RouterContract
 from larajango.contracts.session import SessionStoreContract
 from larajango.contracts.support import ServiceProviderContract
 from larajango.contracts.urls import UriContract, UrlGeneratorContract
+from larajango.contracts.validation import ValidatorContract, ValidatorFactoryContract
 from larajango.contracts.views import ViewFactoryContract, ViewInstanceContract
 
 __all__ = [
@@ -30,6 +31,8 @@ __all__ = [
     "ServiceProviderContract",
     "UriContract",
     "UrlGeneratorContract",
+    "ValidatorContract",
+    "ValidatorFactoryContract",
     "ViewFactoryContract",
     "ViewInstanceContract",
     "ViteFactoryContract",

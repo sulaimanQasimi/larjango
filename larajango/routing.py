@@ -745,13 +745,15 @@ def _resolve_bindings(route: Route, action: Callable, kwargs: dict):
 
 
 def _call_action(action, request, args, kwargs):
+    from larajango.http.request import ValidationRequestException
+
     signature = inspect.signature(action)
     parameters = list(signature.parameters.values())
-    if parameters:
-        annotation = parameters[0].annotation
-        if annotation is LarajangoRequest:
-            return action(larajango_request(request), *args, **kwargs)
-        try:
+    try:
+        if parameters:
+            annotation = parameters[0].annotation
+            if annotation is LarajangoRequest:
+                return action(larajango_request(request), *args, **kwargs)
             from larajango.requests import FormRequest
 
             if inspect.isclass(annotation) and issubclass(annotation, FormRequest):
@@ -767,9 +769,9 @@ def _call_action(action, request, args, kwargs):
                 request.validated = form.cleaned_data
                 request.form = form
                 return action(form, *args, **kwargs)
-        except TypeError:
-            pass
-    return action(request, *args, **kwargs)
+        return action(request, *args, **kwargs)
+    except ValidationRequestException as exc:
+        return exc.response
 
 
 def _normalize_response(value, request=None):

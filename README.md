@@ -528,6 +528,52 @@ middleware.trustProxies(at="*")
 middleware.trustHosts(at=[r"^larajango\.test$"], subdomains=False)
 ```
 
+## Validation
+
+Validate request input directly from the Larajango request wrapper:
+
+```python
+from larajango.http.request import Request
+
+
+def store(request: Request):
+    data = request.validate({
+        "title": "bail|required|max:255",
+        "body": ["required", "string"],
+        "author.email": "nullable|email",
+        "tags": "array",
+        "tags.*.name": "required|string",
+    })
+```
+
+For XHR or JSON requests, failed validation returns a `422` JSON response. For normal form requests, errors and old input are flashed to the session and the user is redirected back.
+
+Manually create validators with the facade:
+
+```python
+from larajango.support import Validator
+from larajango.validation import Rule
+
+validator = Validator.make(
+    {"email": "taylor@example.com"},
+    {"email": ["required", "email", Rule.unique("users", "email")]},
+)
+
+if validator.fails():
+    errors = validator.errors()
+
+validated = validator.validated()
+safe = validator.safe(["email"])
+```
+
+Supported rules include common Laravel rules such as `required`, `nullable`, `sometimes`, `bail`, `email`, `min`, `max`, `between`, `size`, `string`, `integer`, `numeric`, `decimal`, `boolean`, `array`, `list`, `accepted`, `declined`, `same`, `different`, `confirmed`, `in`, `not_in`, `regex`, `alpha`, `alpha_num`, `alpha_dash`, `ascii`, `lowercase`, `uppercase`, `starts_with`, `ends_with`, `url`, `ip`, `ipv4`, `ipv6`, `uuid`, `ulid`, `json`, `date`, `before`, `after`, `mimes`, `mimetypes`, `image`, `file`, `unique`, and `exists`.
+
+Use named error bags when a page has multiple forms:
+
+```python
+request.validate_with_bag("post", {"title": "required"})
+```
+
 Form requests provide Laravel-style validation and can be used as decorators or action type hints:
 
 ```python
@@ -543,7 +589,24 @@ class PostController:
         data = request.validated()
 ```
 
-Form requests may define `authorize`, `prepare_for_validation`, and `passed_validation`. Precognition-style checks are supported with the `Precognition` request header.
+Form requests may define `authorize`, `prepare_for_validation`, `with_validator`, `after`, `messages`, `attributes`, and `passed_validation`. Precognition-style checks are supported with the `Precognition` request header.
+
+Display validation errors and old input in Django or Blade templates:
+
+```django
+{% load validation %}
+{% error "title" as title_error %}
+{% if title_error %}<p>{{ title_error }}</p>{% endif %}
+<input name="title" value="{% old 'title' %}">
+```
+
+```blade
+@error('title')
+    <p>{{ $message }}</p>
+@enderror
+
+<input name="title" value="{{ old('title') }}">
+```
 
 ## Configuration
 

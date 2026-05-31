@@ -32,6 +32,12 @@ class ViewInstance:
 
     def render(self, request=None):
         self.factory.run_composers(self)
+        if request is not None and hasattr(request, "session"):
+            from larajango.validation import MessageBag
+
+            errors = request.session.get("_errors", {}).get("default", {})
+            self.data.setdefault("errors", MessageBag(errors))
+            self.data.setdefault("error_bags", request.session.get("_errors", {}))
         if self.template.endswith(".blade.php"):
             from larajango.blade import Blade
 

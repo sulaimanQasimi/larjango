@@ -14,6 +14,7 @@ from larajango.session import Session
 from larajango.storage import disk
 from larajango.http.request import larajango_request
 from larajango.urls import URL
+from larajango.validation import ValidatorFacade
 from larajango.views import View
 
 
@@ -75,3 +76,4 @@ def register_default_bindings(container):
     container.instance("vite", Vite)
     container.instance("url", URL)
     container.instance("session", Session)
+    container.instance("validator", ValidatorFacade)

@@ -1,20 +1,25 @@
 from __future__ import annotations
 
-from django.core.exceptions import ValidationError
-from django.core.validators import validate_email
 from django.http import JsonResponse
 
 from larajango.http.request import Request, larajango_request
+from larajango.responses import back
+from larajango.validation import ValidationException, ValidatorFacade
 
 
 class FormRequest:
     rules: dict[str, list[str] | str] = {}
+    messages: dict[str, str] = {}
+    attributes: dict[str, str] = {}
+    error_bag = "default"
+    stop_on_first_failure = False
 
     def __init__(self, request):
         self.request = request
         self.larajango = larajango_request(request)
-        self.errors: dict[str, list[str]] = {}
-        self.cleaned_data: dict[str, str] = {}
+        self.errors = {}
+        self.cleaned_data = {}
+        self.validator = None
 
     def authorize(self):
         return True
@@ -25,45 +30,65 @@ class FormRequest:
     def passed_validation(self):
         pass
 
+    def validation_rules(self):
+        return self.rules() if callable(self.rules) else self.rules
+
+    def validation_messages(self):
+        return self.messages() if callable(self.messages) else self.messages
+
+    def validation_attributes(self):
+        return self.attributes() if callable(self.attributes) else self.attributes
+
+    def with_validator(self, validator):
+        pass
+
+    def after(self):
+        return []
+
     def validate(self):
         self.prepare_for_validation()
         if not self.authorize():
-            self.errors.setdefault("authorization", []).append("This action is unauthorized.")
+            self.errors = {"authorization": ["This action is unauthorized."]}
             return False
-        data = self.larajango.input()
-        for field, rules in self.rules.items():
-            rules = rules if isinstance(rules, list) else rules.split("|")
-            value = self.larajango.input(field, "")
-            for rule in rules:
-                self._check(field, value, rule)
-            if field not in self.errors:
-                self.cleaned_data[field] = value
-        if not self.errors:
-            self.passed_validation()
-        return not self.errors
+        validator = ValidatorFacade.make(
+            self.larajango.input(),
+            self.validation_rules(),
+            self.validation_messages(),
+            self.validation_attributes(),
+        )
+        if self.stop_on_first_failure:
+            validator.stop_on_first_failure()
+        self.with_validator(validator)
+        for callback in self.after():
+            validator.after(callback)
+        self.validator = validator
+        if validator.fails():
+            self.errors = validator.errors().to_dict()
+            return False
+        self.cleaned_data = validator.validated()
+        self.passed_validation()
+        return True
 
-    def validated(self):
-        return self.cleaned_data
+    def validated(self, key=None, default=None):
+        if key is None:
+            return self.cleaned_data
+        return self.cleaned_data.get(key, default)
+
+    def safe(self, keys=None):
+        return self.validator.safe(keys) if self.validator else self.cleaned_data
 
     def response(self):
-        return JsonResponse({"message": "The given data was invalid.", "errors": self.errors}, status=422)
+        return validation_failed_response(self.request, self.errors, self.error_bag)
 
-    def _check(self, field: str, value: str, rule: str):
-        name, _, arg = rule.partition(":")
-        if name == "required" and value in {"", None}:
-            self._fail(field, "This field is required.")
-        if name == "email" and value:
-            try:
-                validate_email(value)
-            except ValidationError:
-                self._fail(field, "Enter a valid email address.")
-        if name == "min" and value and len(value) < int(arg):
-            self._fail(field, f"Ensure this field has at least {arg} characters.")
-        if name == "max" and value and len(value) > int(arg):
-            self._fail(field, f"Ensure this field has no more than {arg} characters.")
 
-    def _fail(self, field: str, message: str):
-        self.errors.setdefault(field, []).append(message)
+def validation_failed_response(request, errors: dict, bag: str = "default"):
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest" or "application/json" in request.headers.get("Accept", ""):
+        return JsonResponse({"message": "The given data was invalid.", "errors": errors}, status=422)
+    request.session.setdefault("_errors", {})
+    request.session["_errors"][bag] = errors
+    if hasattr(request, "larajango"):
+        request.larajango.flash()
+    return back(request).with_input(request).to_response()
 
 
 def validate(request_class: type[FormRequest]):
@@ -85,4 +110,8 @@ def validate(request_class: type[FormRequest]):
     return decorator
 
 
-__all__ = ["FormRequest", "Request", "larajango_request", "validate"]
+def validate_data(data: dict, rules: dict, messages: dict | None = None, attributes: dict | None = None):
+    return ValidatorFacade.validate(data, rules, messages, attributes)
+
+
+__all__ = ["FormRequest", "Request", "ValidationException", "larajango_request", "validate", "validate_data"]

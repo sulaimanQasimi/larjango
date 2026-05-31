@@ -18,6 +18,11 @@ from larajango.storage import disk
 MISSING = object()
 
 
+class ValidationRequestException(Exception):
+    def __init__(self, response):
+        self.response = response
+
+
 class Request:
     def __init__(self, request):
         self.request = request
@@ -334,6 +339,27 @@ class Request:
         from larajango.session import SessionStore
 
         return SessionStore(self.request)
+
+    def validate(self, rules: dict, messages: dict | None = None, attributes: dict | None = None):
+        from larajango.requests import validation_failed_response
+        from larajango.validation import ValidatorFacade
+
+        validator = ValidatorFacade.make(self.input(), rules, messages, attributes)
+        if validator.fails():
+            raise ValidationRequestException(validation_failed_response(self.request, validator.errors().to_dict()))
+        return validator.validated()
+
+    def validate_with_bag(self, bag: str, rules: dict, messages: dict | None = None, attributes: dict | None = None):
+        from larajango.requests import validation_failed_response
+        from larajango.validation import ValidatorFacade
+
+        validator = ValidatorFacade.make(self.input(), rules, messages, attributes)
+        if validator.fails():
+            raise ValidationRequestException(validation_failed_response(self.request, validator.errors().to_dict(), bag))
+        return validator.validated()
+
+    def validateWithBag(self, bag: str, rules: dict, messages: dict | None = None, attributes: dict | None = None):
+        return self.validate_with_bag(bag, rules, messages, attributes)
 
     def cookie(self, key: str, default=None):
         return self.request.COOKIES.get(key, default)

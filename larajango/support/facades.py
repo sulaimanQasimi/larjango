@@ -78,3 +78,7 @@ class URL(Facade):
 
 class Session(Facade):
     accessor = "session"
+
+
+class Validator(Facade):
+    accessor = "validator"

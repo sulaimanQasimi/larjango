@@ -69,6 +69,7 @@ def compile_blade(source: str):
     source = _compile_layouts(source)
     source = _compile_includes(source)
     source = _compile_forms(source)
+    source = _compile_validation(source)
     source = _compile_stacks(source)
     source = _compile_conditionals(source)
     source = _compile_loops(source)
@@ -153,6 +154,17 @@ def _compile_includes(source: str):
 def _compile_forms(source: str):
     source = source.replace("@csrf", "{% load forms %}{% csrf %}")
     source = re.sub(r"@method\((.*?)\)", lambda m: '{% load forms %}{% method "' + _argument(m.group(1)).upper() + '" %}', source)
+    return source
+
+
+def _compile_validation(source: str):
+    source = re.sub(
+        r"@error\((.*?)(?:,\s*(.*?))?\)",
+        lambda m: '{% load validation %}{% error "' + _argument(m.group(1)) + '" as message %}{% if message %}',
+        source,
+    )
+    source = re.sub(r"@enderror\b", "{% endif %}", source)
+    source = re.sub(r"\{\{\s*old\((.*?)\)\s*\}\}", lambda m: "{% load validation %}{% old \"" + _argument(m.group(1)) + "\" %}", source)
     return source
 
 
