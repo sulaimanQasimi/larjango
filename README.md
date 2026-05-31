@@ -2,6 +2,8 @@
 
 Larajango is a Django starter shaped like Laravel 13: controllers in `app/Http/Controllers`, requests in `app/Http/Requests`, middleware in `app/Http/Middleware`, models in `app/Models`, route files in `routes`, config in `config`, an `artisan` command line, and Inertia-style pages in `resources/js/Pages`.
 
+Frontend assets are served with Vite through `django-vite`. In development, Django renders the Vite HMR client, React refresh preamble, and `resources/js/app.jsx` from the Vite dev server. In production, run `npm run build` so Django can read `public/build/manifest.json` and serve the compiled files from `/static/build/`.
+
 ## Quick Start
 
 ```bash
@@ -21,6 +23,8 @@ npm run dev
 ```
 
 Open `http://127.0.0.1:8000`.
+
+The Python requirements include `django-vite` and `inertia-django`; install them with `pip install -r requirements.txt`.
 
 ## Commands
 

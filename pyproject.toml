@@ -10,6 +10,8 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "django>=5.0,<6.0",
+    "django-vite>=3.0",
+    "inertia-django>=1.2",
 ]
 
 [project.scripts]

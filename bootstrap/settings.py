@@ -10,6 +10,7 @@ DEBUG = env("APP_DEBUG", True)
 ALLOWED_HOSTS = [host for host in str(env("APP_HOSTS", "127.0.0.1,localhost,testserver")).split(",") if host]
 
 INSTALLED_APPS = [
+    "django_vite",
     "app.apps.Application",
     "larajango.apps.LarajangoConfig",
     "django.contrib.admin",
@@ -66,6 +67,16 @@ USE_TZ = True
 STATIC_URL = "static/"
 STATICFILES_DIRS = [BASE_DIR / "public"]
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+DJANGO_VITE = {
+    "default": {
+        "dev_mode": DEBUG,
+        "dev_server_host": "127.0.0.1",
+        "dev_server_port": 5173,
+        "static_url_prefix": "build",
+        "manifest_path": BASE_DIR / "public" / "build" / "manifest.json",
+    }
+}
 
 CORS = {
     "ALLOW_ORIGIN": env("CORS_ALLOW_ORIGIN", "*"),

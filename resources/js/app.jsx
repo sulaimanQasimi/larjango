@@ -1,3 +1,5 @@
+import 'vite/modulepreload-polyfill'
+import '../css/app.css'
 import { createInertiaApp } from '@inertiajs/react'
 import { createRoot } from 'react-dom/client'
 
